@@ -74,6 +74,10 @@ export default function HotelTimelineVIP() {
   const [payCategory, setPayCategory] = useState("Oda Konaklama"); 
   const [payNote, setPayNote] = useState("");
   
+  // ODA İÇİNDEN CARİYE İŞLEME
+  const [payCariId, setPayCariId] = useState(""); 
+  const [payCariTxType, setPayCariTxType] = useState("arti"); 
+
   // Cari ve Kasa
   const [selectedCariId, setSelectedCariId] = useState(null); 
   const [newCariName, setNewCariName] = useState("");
@@ -85,6 +89,8 @@ export default function HotelTimelineVIP() {
   const [cariTxType, setCariTxType] = useState("arti"); 
   const [cariTxCategory, setCariTxCategory] = useState("Balon Turu");
   const [cariTxDesc, setCariTxDesc] = useState("");
+  const [cariTxPushKasa, setCariTxPushKasa] = useState(false);
+  const [cariTxKasaMethod, setCariTxKasaMethod] = useState("cash");
   
   const [kasaAmount, setKasaAmount] = useState("");
   const [kasaCurrency, setKasaCurrency] = useState("TL");
@@ -98,6 +104,7 @@ export default function HotelTimelineVIP() {
   const scrollContainerRef = useRef(null);
   const rooms = Array.from({ length: 20 }, (_, i) => 101 + i);
 
+  // TAKVİM MOTORU
   const getTodayStr = () => {
     const d = new Date();
     return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
@@ -145,9 +152,17 @@ export default function HotelTimelineVIP() {
     setSelectedRez(null); setIsModalOpen(true);
   };
 
+  // GÜVENLİK KALKANI EKLENDİ (Bozuk veri çökmelerini engeller)
   const handleEditRez = (rez) => {
+    if (!rez) return;
     setTooltip({ visible: false, x: 0, y: 0, rez: null });
-    setFormData({ ...rez, currency: rez.currency || "EUR", status: rez.status || "waiting", payments: rez.payments || [], debts: rez.debts || [] });
+    setFormData({ 
+      ...rez, 
+      currency: rez.currency || "EUR", 
+      status: rez.status || "waiting", 
+      payments: Array.isArray(rez.payments) ? rez.payments : [], 
+      debts: Array.isArray(rez.debts) ? rez.debts : [] 
+    });
     setSelectedRez(rez); setIsModalOpen(true);
   };
 
@@ -170,18 +185,25 @@ export default function HotelTimelineVIP() {
     const cariObj = caris.find(c => c.id === tourSelectedCari);
     const cariNameStr = cariObj ? ` (${cariObj.name})` : "";
     const title = `${tourType}${cariNameStr} ${tourNote ? '- '+tourNote : ''}`;
-    setFormData({ ...formData, debts: [...formData.debts, { id: Date.now().toString(), title, amount: parseFloat(tourPrice), currency: tourCurrency, cariId: tourSelectedCari }] });
+    
+    const safeDebts = Array.isArray(formData.debts) ? formData.debts : [];
+    setFormData({ ...formData, debts: [...safeDebts, { id: Date.now().toString(), title, amount: parseFloat(tourPrice) || 0, currency: tourCurrency, cariId: tourSelectedCari }] });
     setTourPrice(""); setTourNote(""); setTourSelectedCari("");
   };
 
-  const handleDeleteDebt = (debtId) => setFormData({ ...formData, debts: formData.debts.filter(d => d.id !== debtId) });
+  const handleDeleteDebt = (debtId) => {
+    const safeDebts = Array.isArray(formData.debts) ? formData.debts : [];
+    setFormData({ ...formData, debts: safeDebts.filter(d => d.id !== debtId) });
+  };
 
   const handleReceivePayment = async () => {
     if (!payAmount) return;
-    const amountNum = parseFloat(payAmount);
+    const amountNum = parseFloat(payAmount) || 0;
     const payId = Date.now().toString();
     
-    const updatedRez = { ...formData, payments: [...(formData.payments || []), { id: payId, category: payCategory, amount: amountNum, currency: payCurrency, method: payMethod, note: payNote, date: todayStr }] };
+    const safePayments = Array.isArray(formData.payments) ? formData.payments : [];
+    const updatedRez = { ...formData, payments: [...safePayments, { id: payId, category: payCategory, amount: amountNum, currency: payCurrency, method: payMethod, note: payNote, date: todayStr }] };
+    
     setFormData(updatedRez);
     await setDoc(doc(db, "reservations", updatedRez.id.toString()), updatedRez);
     
@@ -189,8 +211,21 @@ export default function HotelTimelineVIP() {
     await setDoc(doc(db, "transactions", (Date.now() + 1).toString()), { 
       id: (Date.now() + 1).toString(), date: todayStr, type: 'income', category: payCategory, amount: amountNum, currency: payCurrency, method: payMethod, desc: txDesc 
     });
+
+    if (payCariId) {
+      const targetCari = caris.find(c => c.id === payCariId);
+      if (targetCari) {
+        const cDesc = `Oda ${formData.roomNo} - ${payCategory} işlemi (${formData.guestName})`;
+        const txObjCari = { 
+          id: (Date.now() + 2).toString(), date: todayStr, type: payCariTxType, amount: amountNum, currency: payCurrency, category: payCategory, desc: cDesc 
+        };
+        const safeTransactions = Array.isArray(targetCari.transactions) ? targetCari.transactions : [];
+        const updatedCari = { ...targetCari, transactions: [...safeTransactions, txObjCari] };
+        await setDoc(doc(db, "caris", targetCari.id), updatedCari);
+      }
+    }
     
-    setPayAmount(""); setPayNote("");
+    setPayAmount(""); setPayNote(""); setPayCariId("");
   };
 
   const handleAddCari = async () => {
@@ -202,52 +237,62 @@ export default function HotelTimelineVIP() {
 
   const handleCariTransaction = async (cari) => {
     if (!cariTxAmount || !cariTxDesc) return alert("Tutar ve açıklama zorunludur.");
-    const amt = parseFloat(cariTxAmount);
+    const amt = parseFloat(cariTxAmount) || 0;
     const txObj = { id: Date.now().toString(), date: todayStr, type: cariTxType, amount: amt, currency: cariTxCurrency, category: cariTxCategory, desc: cariTxDesc };
-    const updatedCari = { ...cari, transactions: [...(cari.transactions || []), txObj] };
+    
+    const safeTransactions = Array.isArray(cari.transactions) ? cari.transactions : [];
+    const updatedCari = { ...cari, transactions: [...safeTransactions, txObj] };
     await setDoc(doc(db, "caris", cari.id), updatedCari);
+
+    if (cariTxPushKasa) {
+      const txType = cariTxType === 'odeme' ? 'income' : 'expense';
+      const kasaDescStr = `Cari İşlem: ${cari.name} / ${cariTxDesc}`;
+      await setDoc(doc(db, "transactions", (Date.now() + 1).toString()), {
+        id: (Date.now() + 1).toString(), date: todayStr, type: txType, category: cariTxCategory, amount: amt, currency: cariTxCurrency, method: cariTxKasaMethod, desc: kasaDescStr
+      });
+    }
     setCariTxAmount(""); setCariTxDesc("");
   };
 
   const handleDeleteCari = async (cariId) => {
-    if (confirm("Bu cariyi silmek istediğinize emin misiniz?")) {
+    if (confirm("Bu cariyi silmek istediğinize emin misiniz? Tüm geçmişi silinecek!")) {
       await deleteDoc(doc(db, "caris", cariId));
       setSelectedCariId(null);
     }
   };
 
-  // TAM ENTEGRE KASA -> CARİ İŞLEMİ (SİHİRLİ BAĞLANTI)
   const handleAddManualTransaction = async () => {
     if(!kasaAmount || !kasaDesc) return alert("Tutar ve açıklama zorunludur.");
-    const amt = parseFloat(kasaAmount);
+    const amt = parseFloat(kasaAmount) || 0;
     const newTxId = Date.now().toString();
     let finalDesc = kasaDesc;
     const selectedCari = caris.find(c => c.id === kasaSelectedCari);
     
     if (selectedCari) finalDesc = `${selectedCari.name} - ${kasaDesc}`;
 
-    // 1. Kasaya İşle
     const newTx = { id: newTxId, date: todayStr, type: kasaType, category: kasaCategory, amount: amt, currency: kasaCurrency, method: kasaMethod, desc: finalDesc };
     await setDoc(doc(db, "transactions", newTxId), newTx);
 
-    // 2. Cariye İşle (Kasadan gider çıkıyorsa Cariye ödeme yapılmıştır = Cari bakiye düşer)
     if (selectedCari) {
-      // Eğer Kasa Gider (expense) ise Cariye 'eksi' (ödeme yapıldı) yansır. Gelir ise 'arti' yansır.
       const cType = kasaType === 'expense' ? 'eksi' : 'arti'; 
       const cDesc = `Ana Kasadan Otomatik: ${kasaDesc}`;
       const txObjCari = { id: (Date.now() + 1).toString(), date: todayStr, type: cType, amount: amt, currency: kasaCurrency, category: kasaCategory, desc: cDesc };
-      const updatedCari = { ...selectedCari, transactions: [...(selectedCari.transactions || []), txObjCari] };
+      
+      const safeTransactions = Array.isArray(selectedCari.transactions) ? selectedCari.transactions : [];
+      const updatedCari = { ...selectedCari, transactions: [...safeTransactions, txObjCari] };
       await setDoc(doc(db, "caris", selectedCari.id), updatedCari);
     }
     setKasaAmount(""); setKasaDesc(""); setKasaSelectedCari("");
   };
 
+  // GÜVENLİK KALKANI (Matematiksel Bozuk Veri Çökmelerini Engeller)
   const getCariBalances = (transactions = []) => {
-    return transactions.reduce((acc, tx) => {
+    const safeTx = Array.isArray(transactions) ? transactions : [];
+    return safeTx.reduce((acc, tx) => {
       const cur = tx.currency || 'TL';
       if (!acc[cur]) acc[cur] = 0;
       const mult = tx.type === 'arti' ? 1 : -1;
-      acc[cur] += tx.amount * mult;
+      acc[cur] += (parseFloat(tx.amount) || 0) * mult;
       return acc;
     }, { TL: 0, USD: 0, EUR: 0 });
   };
@@ -257,19 +302,29 @@ export default function HotelTimelineVIP() {
     await setDoc(doc(db, "housekeeping", hkId), { roomNo, date: hkFilterDate, status, note, updatedAt: new Date().toISOString() });
   };
 
+  // GÜVENLİK KALKANI EKLENDİ
   const getCalc = (rez) => {
-    const totalDebt = (parseFloat(rez.balance) || 0) + (rez.debts || []).reduce((a, b) => a + b.amount, 0);
-    const totalPaid = (rez.payments || []).reduce((a, b) => a + b.amount, 0);
-    return { totalDebt, totalPaid, remaining: totalDebt - totalPaid, currency: rez.currency || 'EUR' };
+    if (!rez) return { totalDebt: 0, totalPaid: 0, remaining: 0, currency: 'EUR' };
+    const baseBalance = parseFloat(rez.balance) || 0;
+    
+    const safeDebts = Array.isArray(rez.debts) ? rez.debts : [];
+    const debtsAmount = safeDebts.reduce((a, b) => a + (parseFloat(b.amount) || 0), 0);
+    
+    const safePayments = Array.isArray(rez.payments) ? rez.payments : [];
+    const paidAmount = safePayments.reduce((a, b) => a + (parseFloat(b.amount) || 0), 0);
+    
+    const totalDebt = baseBalance + debtsAmount;
+    return { totalDebt, totalPaid: paidAmount, remaining: totalDebt - paidAmount, currency: rez.currency || 'EUR' };
   };
 
   const kasaBalances = transactions.reduce((acc, tx) => {
     const cur = tx.currency || 'TL';
     if (!acc[cur]) acc[cur] = { total: 0, cash: 0, cc: 0 };
     const multiplier = tx.type === 'income' ? 1 : -1;
-    acc[cur].total += (tx.amount * multiplier);
-    if (tx.method === 'cash') acc[cur].cash += (tx.amount * multiplier);
-    if (tx.method === 'cc') acc[cur].cc += (tx.amount * multiplier);
+    const amt = parseFloat(tx.amount) || 0;
+    acc[cur].total += (amt * multiplier);
+    if (tx.method === 'cash') acc[cur].cash += (amt * multiplier);
+    if (tx.method === 'cc') acc[cur].cc += (amt * multiplier);
     return acc;
   }, { TL: { total: 0, cash: 0, cc: 0 }, USD: { total: 0, cash: 0, cc: 0 }, EUR: { total: 0, cash: 0, cc: 0 } });
 
@@ -279,17 +334,23 @@ export default function HotelTimelineVIP() {
     return "bg-indigo-500 text-white shadow-indigo-500/40 shadow-sm border border-indigo-600";
   };
 
+  // SONSUZ DÖNGÜ KIRICI KESİN ÇÖZÜM
   const renderRowCells = (roomNo) => {
     let cells = [];
-    let i = 0;
-    while (i < visibleDays.length) {
+    for (let i = 0; i < visibleDays.length; ) {
       const day = visibleDays[i].dateStr;
       const rez = reservations.find(r => r.roomNo === roomNo && day >= r.checkIn && day < r.checkOut);
 
       if (rez) {
-        let span = 0;
-        while (i + span < visibleDays.length && visibleDays[i + span].dateStr < rez.checkOut) { span++; }
-        if (span === 0) span = 1; 
+        let span = 1; // Başlangıçta 1 gün sayar
+        // Bitiş tarihi ne olursa olsun, ekranın sonuna kadar güvenli hesaplama yapar
+        for (let j = i + 1; j < visibleDays.length; j++) {
+          if (visibleDays[j].dateStr < rez.checkOut) {
+            span++;
+          } else {
+            break;
+          }
+        }
 
         cells.push(
           <td key={day} colSpan={span} className="border-r border-b border-slate-100 p-0.5 min-w-[50px] relative h-[36px]">
@@ -322,11 +383,11 @@ export default function HotelTimelineVIP() {
 
   if (!isLoggedIn) {
     return (
-      <div className="flex h-screen w-screen bg-slate-50 items-center justify-center p-4 font-sans text-slate-800">
+      <div className="flex h-screen w-screen bg-slate-100 items-center justify-center p-4 font-sans text-slate-800">
         <div className="bg-white border border-slate-200 w-full max-w-md p-10 rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.05)] flex flex-col items-center animate-in fade-in zoom-in duration-500">
           <div className="w-24 h-24 bg-gradient-to-br from-indigo-500 to-blue-600 rounded-3xl flex items-center justify-center mb-6 text-5xl shadow-lg shadow-indigo-500/30">🏨</div>
           <h1 className="text-2xl font-black text-slate-800 tracking-tight mb-2">Doors of Cappadocia</h1>
-          <p className="text-sm text-slate-500 mb-8 font-medium">Premium Yönetim Paneli</p>
+          <p className="text-sm text-slate-500 mb-8 font-medium">VIP Yönetim Paneli</p>
           <form onSubmit={handleLogin} className="w-full space-y-5">
             <div>
               <label className="block text-xs text-slate-500 font-bold mb-2 uppercase tracking-wide">Kullanıcı Adı</label>
@@ -372,7 +433,7 @@ export default function HotelTimelineVIP() {
           </button>
         </nav>
 
-        {/* GÜNLÜK AKIŞ (SOL MENÜ ALTINDA - ÇOK ŞIK) */}
+        {/* GÜNLÜK AKIŞ (SOL MENÜ ALTINDA) */}
         <div className="flex-1 overflow-y-auto custom-scrollbar p-4 bg-slate-50/50">
           <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 px-2 flex justify-between items-center">
             <span>Bugünün Akışı</span> <span className="bg-slate-200 text-slate-600 px-2 rounded-md">{todayStr}</span>
@@ -420,7 +481,6 @@ export default function HotelTimelineVIP() {
       {/* ANA İÇERİK */}
       <div className="flex-1 flex flex-col overflow-hidden relative bg-white">
         
-        {/* ÜST HEADER */}
         <header className="h-20 bg-white/90 backdrop-blur-xl border-b border-slate-200 px-8 flex justify-between items-center z-20 shrink-0">
           <h2 className="text-xl font-black text-slate-800 tracking-tight">
             {activeTab === 'timeline' && 'Oda & Rezervasyon Akışı'}
@@ -429,7 +489,6 @@ export default function HotelTimelineVIP() {
             {activeTab === 'hk' && 'Günlük Kat Hizmetleri Logları'}
           </h2>
           
-          {/* TAKVİM İÇİN İLERİ / GERİ KONTROLLERİ */}
           {activeTab === 'timeline' && (
              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl p-1.5 shadow-sm">
                <button onClick={() => shiftDate(-7)} className="px-4 py-1.5 text-slate-500 hover:text-indigo-600 hover:bg-white rounded-lg font-black transition-all text-sm shadow-sm border border-transparent hover:border-slate-200">← 7 Gün</button>
@@ -441,9 +500,8 @@ export default function HotelTimelineVIP() {
           )}
         </header>
 
-        {/* 1. SEKME: TAKVİM (FULL EKRAN 20 ODA SIĞACAK ŞEKİLDE) */}
         {activeTab === "timeline" && (
-          <div className="flex-1 overflow-auto relative custom-scrollbar bg-slate-50/50 animate-in fade-in duration-500">
+          <div className="flex-1 overflow-auto relative custom-scrollbar bg-slate-50/30 animate-in fade-in duration-500">
             <table className="w-full text-left border-collapse table-fixed select-none">
               <thead className="bg-slate-100 text-slate-600">
                 <tr>
@@ -482,7 +540,6 @@ export default function HotelTimelineVIP() {
           </div>
         )}
 
-        {/* 2. SEKME: KASA VE GÜNLÜK RAPORLAR */}
         {activeTab === "kasa" && (
           <div className="flex-1 flex flex-col p-8 overflow-y-auto bg-slate-50 animate-in fade-in duration-500">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 max-w-7xl mx-auto w-full">
@@ -509,7 +566,7 @@ export default function HotelTimelineVIP() {
                     <button onClick={() => setKasaType("expense")} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${kasaType==='expense' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>GİDER (-)</button>
                   </div>
                   
-                  <select value={kasaCategory} onChange={e=>setKasaCategory(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl p-3.5 text-sm text-slate-700 outline-none focus:border-indigo-500 font-medium transition-all shadow-sm">
+                  <select value={kasaCategory} onChange={e=>setKasaCategory(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm text-slate-700 outline-none focus:border-indigo-500 font-medium transition-all shadow-sm">
                     {activities.map(a => <option key={a} value={a}>{a}</option>)}
                     <option value="Market / Mutfak Gideri">Market / Mutfak Gideri</option><option value="Genel Gider">Genel Gider / Diğer</option>
                   </select>
@@ -517,29 +574,29 @@ export default function HotelTimelineVIP() {
                   <div>
                     <label className="block text-[10px] text-indigo-500 font-bold mb-1 uppercase tracking-wider">Cari Seçimi (Opsiyonel)</label>
                     <select value={kasaSelectedCari} onChange={e=>setKasaSelectedCari(e.target.value)} className="w-full bg-indigo-50 border border-indigo-100 rounded-xl p-3.5 text-sm text-indigo-700 font-bold outline-none focus:border-indigo-500 transition-all">
-                      <option value="">-- Bağımsız İşlem (Cari Seçme) --</option>
+                      <option value="">-- Bağımsız İşlem (Cari Yok) --</option>
                       {caris.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
-                    <input type="number" value={kasaAmount} onChange={e=>setKasaAmount(e.target.value)} placeholder="Tutar" className="bg-white border border-slate-200 rounded-xl p-3.5 text-sm text-slate-800 outline-none focus:border-indigo-500 shadow-sm" />
-                    <select value={kasaCurrency} onChange={e=>setKasaCurrency(e.target.value)} className="bg-white border border-slate-200 rounded-xl p-3.5 text-sm text-slate-700 font-bold outline-none shadow-sm">
+                    <input type="number" value={kasaAmount} onChange={e=>setKasaAmount(e.target.value)} placeholder="Tutar" className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm text-slate-800 outline-none focus:border-indigo-500 shadow-sm" />
+                    <select value={kasaCurrency} onChange={e=>setKasaCurrency(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm text-slate-700 font-bold outline-none shadow-sm">
                       <option value="TL">TL</option><option value="USD">USD</option><option value="EUR">EUR</option>
                     </select>
                   </div>
 
-                  <select value={kasaMethod} onChange={e=>setKasaMethod(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl p-3.5 text-sm text-slate-700 outline-none shadow-sm">
+                  <select value={kasaMethod} onChange={e=>setKasaMethod(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm text-slate-700 outline-none shadow-sm">
                     <option value="cash">Nakit Kasa</option><option value="cc">Kredi Kartı / POS</option>
                   </select>
 
-                  <input type="text" value={kasaDesc} onChange={e=>setKasaDesc(e.target.value)} placeholder="Açıklama (Örn: Yakıt)" className="w-full bg-white border border-slate-200 rounded-xl p-3.5 text-sm text-slate-800 outline-none focus:border-indigo-500 shadow-sm" />
+                  <input type="text" value={kasaDesc} onChange={e=>setKasaDesc(e.target.value)} placeholder="Açıklama (Örn: Yakıt)" className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm text-slate-800 outline-none focus:border-indigo-500 shadow-sm" />
                   
                   <button onClick={handleAddManualTransaction} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-indigo-200 transition-all text-sm uppercase tracking-widest mt-2">KASAYA İŞLE</button>
                 </div>
               </div>
 
-              <div className="lg:col-span-2 bg-white border border-slate-100 rounded-3xl p-6 shadow-lg shadow-slate-200/50 flex flex-col h-[650px]">
+              <div className="lg:col-span-2 bg-white border border-slate-100 rounded-3xl p-6 shadow-lg shadow-slate-200/50 flex flex-col h-[580px]">
                 <div className="flex flex-col md:flex-row justify-between items-center border-b border-slate-100 pb-4 mb-4 gap-4 shrink-0">
                   <h3 className="text-sm font-black text-slate-700 uppercase tracking-wider">Günlük İşlem Raporu</h3>
                   <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-200">
@@ -574,7 +631,6 @@ export default function HotelTimelineVIP() {
           </div>
         )}
 
-        {/* 3. SEKME: CARİ HESAPLAR */}
         {activeTab === "caris" && (
           <div className="flex-1 flex flex-col p-8 overflow-y-auto bg-slate-50 animate-in fade-in duration-500">
             {selectedCariId ? (
@@ -613,8 +669,8 @@ export default function HotelTimelineVIP() {
                         <div className="w-full lg:w-1/3 space-y-5 bg-slate-50 p-6 rounded-3xl border border-slate-100 overflow-y-auto custom-scrollbar h-fit">
                           <h4 className="text-sm font-black text-indigo-700 uppercase tracking-wider mb-2">Cari Manuel İşlem Ekle</h4>
                           <div className="flex gap-2 bg-white p-1 rounded-2xl border border-slate-200 shadow-sm">
-                            <button onClick={() => setCariTxType("arti")} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${cariTxType==='arti' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>HİZMET ALINDI (+)</button>
-                            <button onClick={() => setCariTxType("eksi")} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${cariTxType==='eksi' ? 'bg-emerald-50 text-emerald-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>ÖDEME YAPILDI (-)</button>
+                            <button onClick={() => setCariTxType("arti")} className={`flex-1 py-3 rounded-xl text-[11px] font-black transition-all ${cariTxType==='arti' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>BORÇ YAZ (+)</button>
+                            <button onClick={() => setCariTxType("eksi")} className={`flex-1 py-3 rounded-xl text-[11px] font-black transition-all ${cariTxType==='eksi' ? 'bg-emerald-50 text-emerald-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>TAHSİLAT/ÖDEME (-)</button>
                           </div>
                           <select value={cariTxCategory} onChange={e=>setCariTxCategory(e.target.value)} className="w-full bg-white border border-slate-200 shadow-sm rounded-xl p-3.5 text-sm text-slate-700 font-medium outline-none focus:border-indigo-500">
                             {activities.map(a => <option key={a} value={a}>{a}</option>)}
@@ -648,13 +704,13 @@ export default function HotelTimelineVIP() {
                                 <tr><th className="p-4 font-bold">Tarih</th><th className="p-4 font-bold">Kategori</th><th className="p-4 font-bold">Açıklama</th><th className="p-4 text-right font-bold">Tutar</th></tr>
                               </thead>
                               <tbody>
-                                {(currentCari.transactions || []).length === 0 ? <tr><td colSpan="4" className="text-center p-8 text-slate-400 italic font-medium">Hareket bulunmuyor.</td></tr> :
+                                {(Array.isArray(currentCari.transactions) ? currentCari.transactions : []).length === 0 ? <tr><td colSpan="4" className="text-center p-8 text-slate-400 italic font-medium">Hareket bulunmuyor.</td></tr> :
                                   currentCari.transactions.map(tx => (
                                     <tr key={tx.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
                                       <td className="p-4 text-slate-500 font-medium">{tx.date}</td>
                                       <td className="p-4 font-bold text-slate-700">{tx.category || 'Genel'}</td>
                                       <td className="p-4 text-slate-600 font-medium">{tx.desc}</td>
-                                      <td className={`p-4 text-right font-black ${tx.type === 'arti' ? 'text-amber-500' : 'text-emerald-500'}`}>{tx.type === 'arti' ? '+ Borç Eklendi' : '- Ödeme Yapıldı'} <br/><span className="text-xs">{tx.amount.toLocaleString()} {tx.currency || 'TL'}</span></td>
+                                      <td className={`p-4 text-right font-black ${tx.type === 'arti' ? 'text-amber-500' : 'text-emerald-500'}`}>{tx.type === 'arti' ? '+ Borç' : '- Ödendi'} <br/><span className="text-xs">{tx.amount.toLocaleString()} {tx.currency || 'TL'}</span></td>
                                     </tr>
                                   ))
                                 }
@@ -696,15 +752,15 @@ export default function HotelTimelineVIP() {
                           <span className="inline-block px-3 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[10px] text-slate-500 font-bold uppercase mb-5">{cari.type}</span>
                           <div className="space-y-3 mb-6">
                             <div className="flex justify-between items-center text-sm border-b border-slate-50 pb-2">
-                              <span className="text-slate-500 font-medium">TL Bakiye:</span>
+                              <span className="text-slate-400 font-medium">TL Bakiye:</span>
                               <span className={`font-black ${cBals.TL >= 0 ? 'text-slate-700' : 'text-rose-500'}`}>{cBals.TL.toLocaleString()}</span>
                             </div>
                             <div className="flex justify-between items-center text-sm border-b border-slate-50 pb-2">
-                              <span className="text-slate-500 font-medium">USD Bakiye:</span>
+                              <span className="text-slate-400 font-medium">USD Bakiye:</span>
                               <span className={`font-black ${cBals.USD >= 0 ? 'text-slate-700' : 'text-rose-500'}`}>{cBals.USD.toLocaleString()}</span>
                             </div>
                             <div className="flex justify-between items-center text-sm">
-                              <span className="text-slate-500 font-medium">EUR Bakiye:</span>
+                              <span className="text-slate-400 font-medium">EUR Bakiye:</span>
                               <span className={`font-black ${cBals.EUR >= 0 ? 'text-slate-700' : 'text-rose-500'}`}>{cBals.EUR.toLocaleString()}</span>
                             </div>
                           </div>
@@ -788,7 +844,6 @@ export default function HotelTimelineVIP() {
             
             <div className="flex-1 overflow-y-auto p-8 bg-white flex flex-col md:flex-row gap-8 custom-scrollbar">
               
-              {/* SOL TARAF: REZERVASYON BİLGİLERİ */}
               <div className="flex-1 space-y-6">
                 <div>
                   <h3 className="text-sm font-black text-slate-800 border-b border-slate-100 pb-2 mb-4 uppercase tracking-wider">Konaklama Bilgileri</h3>
@@ -864,7 +919,6 @@ export default function HotelTimelineVIP() {
                 </div>
               </div>
 
-              {/* SAĞ TARAF: HESAP & TAHSİLAT & CARİ */}
               <div className="w-full md:w-5/12 bg-slate-50 border border-slate-100 rounded-3xl p-6 flex flex-col shadow-inner">
                 <h3 className="text-sm font-black text-slate-800 border-b border-slate-200 pb-2 uppercase tracking-wider mb-4">Hesap & Ödemeler</h3>
                 
@@ -885,7 +939,7 @@ export default function HotelTimelineVIP() {
 
                 <div className="flex-1 overflow-y-auto space-y-2 mb-5 pr-2 max-h-32 custom-scrollbar">
                   <h4 className="text-[10px] text-slate-400 font-bold uppercase mb-2">Satılan Ekstralar</h4>
-                  {formData.debts.map(d => (
+                  {(Array.isArray(formData.debts) ? formData.debts : []).map(d => (
                     <div key={d.id} className="flex justify-between items-center bg-white p-3 rounded-xl text-xs border border-slate-100 shadow-sm">
                       <span className="text-slate-700 font-semibold">{d.title}</span>
                       <div className="flex items-center gap-3">
@@ -927,7 +981,7 @@ export default function HotelTimelineVIP() {
                         <option value="cash">Nakit</option><option value="cc">POS</option>
                       </select>
                     </div>
-                    <input type="text" value={payNote} onChange={e=>setPayNote(e.target.value)} placeholder="Açıklama (Örn: Balon Peşinatı)" className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm text-slate-700 outline-none" />
+                    <input type="text" value={payNote} onChange={e=>setPayNote(e.target.value)} placeholder="Açıklama (Örn: Peşinat)" className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm text-slate-700 outline-none" />
                     <button onClick={handleReceivePayment} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3.5 rounded-xl shadow-md transition-colors text-xs uppercase tracking-widest">ÖDEMEYİ KAYDET</button>
                   </div>
                 </div>
