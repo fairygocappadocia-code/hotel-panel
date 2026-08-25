@@ -55,27 +55,23 @@ export default function HotelTimelineVIP() {
     roomNo: "", checkIn: "", checkOut: "", guestName: "", phone: "", note: "", balance: 0, currency: "TL", debts: [], payments: [], status: "waiting"
   });
 
-  // Gelişmiş Tur & Aktivite Listesi
   const activities = [
     "Balon Turu", "ATV (Quad) Turu", "At Turu (Horse)", "Deve Turu (Camel)", "Türk Gecesi", 
     "Regular (Grup) Tur", "Özel (Private) Tur", "Transfer - Kayseri (ASR)", "Transfer - Nevşehir (NAV)", "Oda Konaklama", "Diğer"
   ];
 
-  // Tur Ekleme State'leri
   const [tourType, setTourType] = useState("Balon Turu");
-  const [tourSelectedCari, setTourSelectedCari] = useState(""); // Hangi cariden alındı
+  const [tourSelectedCari, setTourSelectedCari] = useState(""); 
   const [tourPrice, setTourPrice] = useState("");
   const [tourCurrency, setTourCurrency] = useState("EUR");
   const [tourNote, setTourNote] = useState("");
 
-  // Ödeme Alma State'leri
   const [payAmount, setPayAmount] = useState("");
   const [payCurrency, setPayCurrency] = useState("EUR");
   const [payMethod, setPayMethod] = useState("cash"); 
-  const [payCategory, setPayCategory] = useState("Oda Konaklama"); // Ne ödemesi alınıyor
+  const [payCategory, setPayCategory] = useState("Oda Konaklama"); 
   const [payNote, setPayNote] = useState("");
 
-  // CARİ YÖNETİM STATE'LERİ
   const [selectedCariId, setSelectedCariId] = useState(null); 
   const [newCariName, setNewCariName] = useState("");
   const [newCariPhone, setNewCariPhone] = useState("");
@@ -83,16 +79,17 @@ export default function HotelTimelineVIP() {
 
   const [cariTxAmount, setCariTxAmount] = useState("");
   const [cariTxCurrency, setCariTxCurrency] = useState("TL");
-  const [cariTxType, setCariTxType] = useState("arti"); // arti (bakiye ekle) / eksi (bakiye düş)
+  const [cariTxType, setCariTxType] = useState("arti"); 
   const [cariTxCategory, setCariTxCategory] = useState("Balon Turu");
   const [cariTxDesc, setCariTxDesc] = useState("");
+  const [cariTxPushKasa, setCariTxPushKasa] = useState(false);
+  const [cariTxKasaMethod, setCariTxKasaMethod] = useState("cash");
   
-  // Kasa İşlemleri
   const [kasaAmount, setKasaAmount] = useState("");
   const [kasaCurrency, setKasaCurrency] = useState("TL");
   const [kasaType, setKasaType] = useState("expense");
   const [kasaCategory, setKasaCategory] = useState("Genel Gider");
-  const [kasaSelectedCari, setKasaSelectedCari] = useState(""); // KASADAN CARİYE BAĞLANTI
+  const [kasaSelectedCari, setKasaSelectedCari] = useState(""); 
   const [kasaMethod, setKasaMethod] = useState("cash");
   const [kasaDesc, setKasaDesc] = useState("");
 
@@ -172,40 +169,29 @@ export default function HotelTimelineVIP() {
     }
   };
 
-  // REZERVASYONA EKSTRA TUR EKLEME
   const handleAddTourToRez = () => {
     if (!tourPrice) return alert("Lütfen tur/transfer ücreti girin.");
-    
-    // Cari seçilmişse ismini bul
     const cariObj = caris.find(c => c.id === tourSelectedCari);
     const cariNameStr = cariObj ? ` (${cariObj.name})` : "";
-    
     const title = `${tourType}${cariNameStr} ${tourNote ? '- '+tourNote : ''}`;
-    
     setFormData({ ...formData, debts: [...formData.debts, { id: Date.now().toString(), title, amount: parseFloat(tourPrice), currency: tourCurrency }] });
     setTourPrice(""); setTourNote(""); setTourSelectedCari("");
   };
 
   const handleDeleteDebt = (debtId) => setFormData({ ...formData, debts: formData.debts.filter(d => d.id !== debtId) });
 
-  // REZERVASYONDAN KASAYA TAHSİLAT ALMA
   const handleReceivePayment = async () => {
     if (!payAmount) return;
     const amountNum = parseFloat(payAmount);
     const payId = Date.now().toString();
-    
-    // 1. Rezervasyona ödemeyi ekle
     const updatedRez = { ...formData, payments: [...(formData.payments || []), { id: payId, category: payCategory, amount: amountNum, currency: payCurrency, method: payMethod, note: payNote, date: todayStr }] };
     setFormData(updatedRez);
     await setDoc(doc(db, "reservations", updatedRez.id.toString()), updatedRez);
-    
-    // 2. Ana Kasaya Gelir Olarak İşle
     const newTxId = (Date.now() + 1).toString();
     const txDesc = `Tahsilat: Oda ${formData.roomNo} - ${formData.guestName} ${payNote ? '('+payNote+')' : ''}`;
     await setDoc(doc(db, "transactions", newTxId), { 
       id: newTxId, date: todayStr, type: 'income', category: payCategory, amount: amountNum, currency: payCurrency, method: payMethod, desc: txDesc 
     });
-    
     setPayAmount(""); setPayNote("");
   };
 
@@ -216,17 +202,20 @@ export default function HotelTimelineVIP() {
     setNewCariName(""); setNewCariPhone("");
   };
 
-  // CARİ İÇİNDEN MANUEL İŞLEM EKLEME
   const handleCariTransaction = async (cari) => {
     if (!cariTxAmount || !cariTxDesc) return alert("Tutar ve açıklama zorunludur.");
     const amt = parseFloat(cariTxAmount);
-    const txObj = { 
-      id: Date.now().toString(), date: todayStr, type: cariTxType, amount: amt, currency: cariTxCurrency, category: cariTxCategory, desc: cariTxDesc 
-    };
-    
+    const txObj = { id: Date.now().toString(), date: todayStr, type: cariTxType, amount: amt, currency: cariTxCurrency, category: cariTxCategory, desc: cariTxDesc };
     const updatedCari = { ...cari, transactions: [...(cari.transactions || []), txObj] };
     await setDoc(doc(db, "caris", cari.id), updatedCari);
 
+    if (cariTxPushKasa) {
+      const txType = cariTxType === 'odeme' ? 'income' : 'expense';
+      const kasaDescStr = `Cari İşlem: ${cari.name} / ${cariTxDesc}`;
+      await setDoc(doc(db, "transactions", (Date.now() + 1).toString()), {
+        id: (Date.now() + 1).toString(), date: todayStr, type: txType, category: cariTxCategory, amount: amt, currency: cariTxCurrency, method: cariTxKasaMethod, desc: kasaDescStr
+      });
+    }
     setCariTxAmount(""); setCariTxDesc("");
   };
 
@@ -237,39 +226,24 @@ export default function HotelTimelineVIP() {
     }
   };
 
-  // KASA İŞLEMİ VE CARİ ENTEGRASYONU (SİHİRLİ BAĞLANTI)
   const handleAddManualTransaction = async () => {
     if(!kasaAmount || !kasaDesc) return alert("Tutar ve açıklama zorunludur.");
     const amt = parseFloat(kasaAmount);
     const newTxId = Date.now().toString();
-    
-    // 1. İşlemi Ana Kasaya Kaydet
     let finalDesc = kasaDesc;
     const selectedCari = caris.find(c => c.id === kasaSelectedCari);
-    if (selectedCari) {
-      finalDesc = `${selectedCari.name} - ${kasaDesc}`;
-    }
+    if (selectedCari) finalDesc = `${selectedCari.name} - ${kasaDesc}`;
 
-    const newTx = { 
-      id: newTxId, date: todayStr, type: kasaType, category: kasaCategory, amount: amt, currency: kasaCurrency, method: kasaMethod, desc: finalDesc 
-    };
+    const newTx = { id: newTxId, date: todayStr, type: kasaType, category: kasaCategory, amount: amt, currency: kasaCurrency, method: kasaMethod, desc: finalDesc };
     await setDoc(doc(db, "transactions", newTxId), newTx);
 
-    // 2. EĞER CARİ SEÇİLDİYSE, CARİYE DE OTOMATİK İŞLE
     if (selectedCari) {
-      // Kasadan Gider Çıkıyorsa = Cari'ye Ödeme Yapıyoruz demektir (Bakiye düşer -> 'eksi')
-      // Kasaya Gelir Giriyorsa = Cari'den Tahsilat Alıyoruz demektir (Bakiye düşer -> 'eksi' veya hesaba göre)
-      // Genel mantık: Kasa işlemi cariyi etkiliyorsa, bu bir ödeme/tahsilattır, yani bakiyeyi azaltır ('eksi').
       const cType = 'eksi'; 
       const cDesc = `Kasadan Otomatik İşlem: ${kasaDesc}`;
-      
-      const txObjCari = { 
-        id: (Date.now() + 1).toString(), date: todayStr, type: cType, amount: amt, currency: kasaCurrency, category: kasaCategory, desc: cDesc 
-      };
+      const txObjCari = { id: (Date.now() + 1).toString(), date: todayStr, type: cType, amount: amt, currency: kasaCurrency, category: kasaCategory, desc: cDesc };
       const updatedCari = { ...selectedCari, transactions: [...(selectedCari.transactions || []), txObjCari] };
       await setDoc(doc(db, "caris", selectedCari.id), updatedCari);
     }
-
     setKasaAmount(""); setKasaDesc(""); setKasaSelectedCari("");
   };
 
@@ -277,7 +251,6 @@ export default function HotelTimelineVIP() {
     return transactions.reduce((acc, tx) => {
       const cur = tx.currency || 'TL';
       if (!acc[cur]) acc[cur] = 0;
-      // 'arti' = Borç Ekle (Bakiye Büyür), 'eksi' = Ödeme Yap / Tahsilat Al (Bakiye Küçülür)
       const mult = tx.type === 'arti' ? 1 : -1;
       acc[cur] += tx.amount * mult;
       return acc;
@@ -306,9 +279,9 @@ export default function HotelTimelineVIP() {
   }, { TL: { total: 0, cash: 0, cc: 0 }, USD: { total: 0, cash: 0, cc: 0 }, EUR: { total: 0, cash: 0, cc: 0 } });
 
   const getStatusColor = (status) => {
-    if (status === 'checked_in') return "from-emerald-400 to-teal-600 text-slate-950 shadow-emerald-500/30";
-    if (status === 'checked_out') return "from-rose-500 to-pink-600 text-white shadow-rose-500/30";
-    return "from-amber-400 to-orange-500 text-slate-950 shadow-amber-500/30";
+    if (status === 'checked_in') return "bg-gradient-to-r from-emerald-400 to-emerald-500 text-white shadow-emerald-200";
+    if (status === 'checked_out') return "bg-gradient-to-r from-rose-400 to-rose-500 text-white shadow-rose-200";
+    return "bg-gradient-to-r from-indigo-400 to-blue-500 text-white shadow-blue-200";
   };
 
   const renderRowCells = (roomNo) => {
@@ -324,23 +297,23 @@ export default function HotelTimelineVIP() {
         if (span === 0) span = 1; 
 
         cells.push(
-          <td key={day} colSpan={span} className="border-r border-b border-slate-700/40 p-[2px] min-w-[48px] relative h-9">
+          <td key={day} colSpan={span} className="border-r border-b border-slate-200 p-1 min-w-[48px] relative h-10">
             <div 
               onMouseEnter={(e) => setTooltip({ visible: true, x: e.clientX, y: e.clientY, rez })}
               onMouseMove={(e) => setTooltip({ visible: true, x: e.clientX, y: e.clientY, rez })}
               onMouseLeave={() => setTooltip({ visible: false, x: 0, y: 0, rez: null })}
               onClick={() => handleEditRez(rez)}
-              className={`bg-gradient-to-r ${getStatusColor(rez.status)} text-[11px] font-black px-2.5 h-full w-full rounded-lg shadow-md flex items-center cursor-pointer overflow-hidden z-10 transition-transform hover:scale-[1.02]`}
+              className={`${getStatusColor(rez.status)} text-[11px] font-bold px-2 h-full w-full rounded-md shadow-md flex items-center cursor-pointer overflow-hidden z-10 transition-transform duration-200 hover:scale-[1.02]`}
             >
-              <span className="truncate w-full drop-shadow-sm tracking-wide">{rez.guestName}</span>
-              {getCalc(rez).remaining > 0 && <span className="absolute right-1.5 top-1.5 w-2 h-2 rounded-full bg-rose-600 animate-ping border border-white"></span>}
+              <span className="truncate w-full tracking-wide drop-shadow-sm">{rez.guestName}</span>
+              {getCalc(rez).remaining > 0 && <span className="absolute right-1 top-1 w-2 h-2 rounded-full bg-rose-200 animate-pulse border border-white"></span>}
             </div>
           </td>
         );
         i += span; 
       } else {
         cells.push(
-          <td key={day} onClick={() => handleOpenNewModal(roomNo, day)} className={`border-r border-b border-slate-700/40 h-9 min-w-[48px] cursor-pointer hover:bg-amber-500/10 transition-colors ${day === todayStr ? 'bg-amber-500/5' : ''}`}></td>
+          <td key={day} onClick={() => handleOpenNewModal(roomNo, day)} className={`border-r border-b border-slate-200 h-10 min-w-[48px] cursor-pointer hover:bg-indigo-50 transition-colors ${day === todayStr ? 'bg-blue-50' : ''}`}></td>
         );
         i++;
       }
@@ -354,22 +327,24 @@ export default function HotelTimelineVIP() {
 
   if (!isLoggedIn) {
     return (
-      <div className="flex h-screen w-screen bg-[#070B14] items-center justify-center p-4 font-sans text-slate-100">
-        <div className="bg-gradient-to-b from-slate-900 to-slate-950 border border-amber-500/30 w-full max-w-md p-8 rounded-3xl shadow-[0_0_50px_rgba(245,158,11,0.15)] flex flex-col items-center">
-          <div className="w-20 h-20 bg-gradient-to-br from-amber-400 to-orange-500 rounded-3xl flex items-center justify-center mb-5 text-4xl shadow-xl shadow-amber-500/30 animate-pulse">🏨</div>
-          <h1 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-400 tracking-wider mb-1">DOORS OF CAPPADOCIA</h1>
-          <p className="text-xs text-slate-400 mb-8 tracking-widest uppercase font-semibold">VIP Yönetim Paneli</p>
-          <form onSubmit={handleLogin} className="w-full space-y-4">
+      <div className="flex h-screen w-screen bg-slate-50 items-center justify-center p-4 font-sans text-slate-800">
+        <div className="bg-white border border-slate-200 w-full max-w-md p-10 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.05)] flex flex-col items-center animate-in fade-in zoom-in duration-500">
+          <div className="w-24 h-24 bg-gradient-to-br from-indigo-500 to-blue-600 rounded-3xl flex items-center justify-center mb-6 text-5xl shadow-lg shadow-blue-500/30">
+            🏨
+          </div>
+          <h1 className="text-2xl font-black text-slate-800 tracking-tight mb-2">Doors of Cappadocia</h1>
+          <p className="text-sm text-slate-500 mb-8 font-medium">Yönetim Paneli Güvenli Giriş</p>
+          <form onSubmit={handleLogin} className="w-full space-y-5">
             <div>
-              <label className="block text-[10px] text-amber-500 uppercase font-bold mb-1.5 tracking-wider">Kullanıcı Adı</label>
-              <input type="text" value={usernameInput} onChange={(e) => setUsernameInput(e.target.value)} placeholder="Kullanıcı adınız" className="w-full bg-slate-900 border border-slate-800 rounded-2xl p-3.5 text-sm text-slate-200 outline-none focus:border-amber-500 transition-all shadow-inner" />
+              <label className="block text-xs text-slate-500 font-bold mb-2 uppercase tracking-wide">Kullanıcı Adı</label>
+              <input type="text" value={usernameInput} onChange={(e) => setUsernameInput(e.target.value)} placeholder="Kullanıcı adınız" className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all" />
             </div>
             <div>
-              <label className="block text-[10px] text-amber-500 uppercase font-bold mb-1.5 tracking-wider">Şifre</label>
-              <input type="password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} placeholder="Şifreniz" className="w-full bg-slate-900 border border-slate-800 rounded-2xl p-3.5 text-sm text-slate-200 outline-none focus:border-amber-500 transition-all shadow-inner" />
+              <label className="block text-xs text-slate-500 font-bold mb-2 uppercase tracking-wide">Şifre</label>
+              <input type="password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} placeholder="Şifreniz" className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all" />
             </div>
-            {loginError && <p className="text-rose-400 text-xs text-center font-bold bg-rose-500/10 py-2 rounded-xl border border-rose-500/20">{loginError}</p>}
-            <button type="submit" className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black py-4 rounded-2xl shadow-lg shadow-amber-500/30 transition-all uppercase tracking-wider text-xs mt-3">GİRİŞ YAP</button>
+            {loginError && <p className="text-rose-500 text-xs text-center font-bold bg-rose-50 py-2 rounded-lg">{loginError}</p>}
+            <button type="submit" className="w-full bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-500/20 transition-all text-sm mt-2">Giriş Yap</button>
           </form>
         </div>
       </div>
@@ -377,70 +352,71 @@ export default function HotelTimelineVIP() {
   }
 
   return (
-    <div className="flex h-screen w-screen bg-[#070B14] text-slate-100 font-sans overflow-hidden">
+    <div className="flex h-screen w-screen bg-slate-50 text-slate-800 font-sans overflow-hidden">
       
-      {/* SOL MENÜ */}
-      <aside className="w-20 md:w-64 bg-slate-950 border-r border-amber-500/20 flex flex-col shadow-2xl z-40 transition-all">
-        <div className="h-24 flex items-center justify-center md:justify-start md:px-6 border-b border-slate-800/80 bg-gradient-to-r from-amber-500/5 to-transparent">
-          <span className="text-3xl filter drop-shadow-[0_0_10px_rgba(245,158,11,0.5)]">🏨</span>
+      {/* SOL MENÜ (AYDINLIK & MODERN) */}
+      <aside className="w-20 md:w-64 bg-white border-r border-slate-200 flex flex-col shadow-[10px_0_30px_rgba(0,0,0,0.03)] z-40 transition-all">
+        <div className="h-24 flex items-center justify-center md:justify-start md:px-6 border-b border-slate-100">
+          <span className="text-3xl drop-shadow-sm">🏨</span>
           <div className="hidden md:flex flex-col ml-3">
-             <span className="font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-400 tracking-wider text-xs leading-tight">DOORS OF</span>
-             <span className="font-bold text-slate-300 tracking-widest text-[10px] leading-tight">CAPPADOCIA</span>
+             <span className="font-black text-indigo-700 tracking-tight text-sm leading-tight">DOORS OF</span>
+             <span className="font-bold text-slate-500 tracking-widest text-[10px] leading-tight">CAPPADOCIA</span>
           </div>
         </div>
 
-        <nav className="flex-1 py-6 space-y-3 px-3">
-          <button onClick={() => {setActiveTab("timeline"); setSelectedCariId(null);}} className={`w-full flex items-center justify-center md:justify-start px-3 py-3.5 rounded-2xl transition-all ${activeTab === 'timeline' ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black shadow-lg shadow-amber-500/20 scale-105' : 'text-slate-400 hover:bg-slate-900 hover:text-amber-400'}`}>
+        <nav className="flex-1 py-6 space-y-2 px-4">
+          <button onClick={() => {setActiveTab("timeline"); setSelectedCariId(null);}} className={`w-full flex items-center justify-center md:justify-start px-4 py-4 rounded-2xl transition-all duration-300 ${activeTab === 'timeline' ? 'bg-indigo-50 text-indigo-700 font-bold shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-indigo-600'}`}>
             <span className="text-xl">📅</span><span className="hidden md:block ml-3 text-sm">Takvim (PMS)</span>
           </button>
-          <button onClick={() => {setActiveTab("kasa"); setSelectedCariId(null);}} className={`w-full flex items-center justify-center md:justify-start px-3 py-3.5 rounded-2xl transition-all ${activeTab === 'kasa' ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-black shadow-lg shadow-emerald-500/20 scale-105' : 'text-slate-400 hover:bg-slate-900 hover:text-emerald-400'}`}>
+          <button onClick={() => {setActiveTab("kasa"); setSelectedCariId(null);}} className={`w-full flex items-center justify-center md:justify-start px-4 py-4 rounded-2xl transition-all duration-300 ${activeTab === 'kasa' ? 'bg-emerald-50 text-emerald-700 font-bold shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-emerald-600'}`}>
             <span className="text-xl">💰</span><span className="hidden md:block ml-3 text-sm">Finans & Kasa</span>
           </button>
-          <button onClick={() => setActiveTab("caris")} className={`w-full flex items-center justify-center md:justify-start px-3 py-3.5 rounded-2xl transition-all ${activeTab === 'caris' ? 'bg-gradient-to-r from-sky-500 to-blue-500 text-slate-950 font-black shadow-lg shadow-sky-500/20 scale-105' : 'text-slate-400 hover:bg-slate-900 hover:text-sky-400'}`}>
+          <button onClick={() => setActiveTab("caris")} className={`w-full flex items-center justify-center md:justify-start px-4 py-4 rounded-2xl transition-all duration-300 ${activeTab === 'caris' ? 'bg-sky-50 text-sky-700 font-bold shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-sky-600'}`}>
             <span className="text-xl">👥</span><span className="hidden md:block ml-3 text-sm">Cari Rehberi</span>
           </button>
-          <button onClick={() => {setActiveTab("hk"); setSelectedCariId(null);}} className={`w-full flex items-center justify-center md:justify-start px-3 py-3.5 rounded-2xl transition-all ${activeTab === 'hk' ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-slate-950 font-black shadow-lg shadow-purple-500/20 scale-105' : 'text-slate-400 hover:bg-slate-900 hover:text-purple-400'}`}>
-            <span className="text-xl">🧹</span><span className="hidden md:block ml-3 text-sm">Oda Temizlik (HK)</span>
+          <button onClick={() => {setActiveTab("hk"); setSelectedCariId(null);}} className={`w-full flex items-center justify-center md:justify-start px-4 py-4 rounded-2xl transition-all duration-300 ${activeTab === 'hk' ? 'bg-purple-50 text-purple-700 font-bold shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-purple-600'}`}>
+            <span className="text-xl">🧹</span><span className="hidden md:block ml-3 text-sm">Kat Hizmetleri (HK)</span>
           </button>
         </nav>
 
-        <div className="p-4 border-t border-slate-900">
-          <button onClick={handleLogout} className="w-full flex items-center justify-center md:justify-start px-3 py-3 rounded-xl text-rose-400 hover:bg-rose-500/10 transition-all font-bold text-xs">
-            <span className="text-lg">🚪</span><span className="hidden md:block ml-3">Güvenli Çıkış</span>
+        <div className="p-4 border-t border-slate-100">
+          <button onClick={handleLogout} className="w-full flex items-center justify-center md:justify-start px-4 py-3 rounded-xl text-rose-500 hover:bg-rose-50 transition-all font-bold text-sm">
+            <span className="text-lg">🚪</span><span className="hidden md:block ml-3">Çıkış Yap</span>
           </button>
         </div>
       </aside>
 
       {/* ANA İÇERİK */}
-      <div className="flex-1 flex flex-col overflow-hidden relative">
-        <header className="h-20 bg-slate-900/60 backdrop-blur-xl border-b border-amber-500/20 px-6 flex justify-between items-center z-20 shrink-0">
-          <h2 className="text-base font-black text-slate-200 hidden md:block tracking-wide">
-            {activeTab === 'timeline' && 'Oda & Rezervasyon Akışı'}
-            {activeTab === 'kasa' && 'Kasa Durumu & Kapsamlı Gelir/Gider'}
-            {activeTab === 'caris' && (selectedCariId ? 'Cari Hesap Ekstresi' : 'Kayıtlı Acente ve Şahıs Carileri')}
-            {activeTab === 'hk' && 'Günlük Kat Hizmetleri (HK) Logları'}
+      <div className="flex-1 flex flex-col overflow-hidden relative bg-slate-50/50">
+        <header className="h-20 bg-white/80 backdrop-blur-xl border-b border-slate-200 px-8 flex justify-between items-center z-20 shrink-0 shadow-sm">
+          <h2 className="text-lg font-bold text-slate-700 hidden md:block tracking-tight">
+            {activeTab === 'timeline' && 'Oda & Rezervasyon Yönetimi'}
+            {activeTab === 'kasa' && 'Kasa Durumu & Gelir Gider'}
+            {activeTab === 'caris' && (selectedCariId ? 'Cari Hesap Ekstresi' : 'Kayıtlı Acente ve Cariler')}
+            {activeTab === 'hk' && 'Günlük Kat Hizmetleri Logları'}
           </h2>
-          <h2 className="text-xs font-black text-amber-400 block md:hidden">DOORS OF CAPPADOCIA</h2>
+          <h2 className="text-sm font-bold text-indigo-600 block md:hidden">DOORS</h2>
           
           {activeTab === 'timeline' && (
-             <div className="flex items-center gap-3 bg-slate-950 border border-slate-800 rounded-2xl p-1.5 shadow-inner">
-               <button onClick={() => handleJumpToDate(todayStr)} className="text-[10px] font-black text-slate-300 hover:text-slate-950 hover:bg-amber-400 px-3 py-1.5 bg-slate-900 rounded-xl transition-all tracking-wider">BUGÜN</button>
-               <input type="date" value={jumpDate} onChange={(e) => handleJumpToDate(e.target.value)} className="bg-transparent text-amber-400 text-xs font-bold outline-none cursor-pointer [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:invert" />
+             <div className="flex items-center gap-3 bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
+               <button onClick={() => handleJumpToDate(todayStr)} className="text-xs font-bold text-slate-600 hover:text-indigo-600 px-4 py-2 rounded-lg transition-all">Bugün</button>
+               <input type="date" value={jumpDate} onChange={(e) => handleJumpToDate(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-xs font-bold text-slate-700 outline-none cursor-pointer" />
              </div>
           )}
         </header>
 
+        {/* 1. SEKME: TAKVİM */}
         {activeTab === "timeline" && (
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <div ref={scrollContainerRef} className="flex-1 overflow-auto bg-[#070B14] relative custom-scrollbar">
+          <div className="flex-1 flex flex-col overflow-hidden animate-in fade-in duration-500">
+            <div ref={scrollContainerRef} className="flex-1 overflow-auto relative custom-scrollbar bg-white">
               <table className="w-full text-left border-collapse table-fixed select-none">
-                <thead className="bg-slate-950 text-slate-400">
+                <thead className="bg-slate-50 text-slate-600">
                   <tr>
-                    <th className="sticky left-0 top-0 bg-slate-950 z-30 w-16 border-r border-b border-amber-500/30 text-center shadow-[4px_0_15px_-3px_rgba(0,0,0,0.8)]"><span className="text-[10px] font-black tracking-widest text-amber-400">ODA</span></th>
+                    <th className="sticky left-0 top-0 bg-slate-100 z-30 w-16 border-r border-b border-slate-200 text-center shadow-[2px_0_5px_rgba(0,0,0,0.05)]"><span className="text-[10px] font-black tracking-widest text-slate-500">ODA</span></th>
                     {days.map(dayObj => (
-                      <th key={dayObj.dateStr} id={"col-" + dayObj.dateStr} className={`w-[48px] sticky top-0 bg-slate-950/95 z-20 border-r border-b border-slate-800 text-center py-2 ${dayObj.dateStr === todayStr ? 'bg-amber-500/10 border-b-amber-400' : ''}`}>
-                        <div className={`text-xs font-black ${dayObj.dateStr === todayStr ? 'text-amber-400' : 'text-slate-200'}`}>{dayObj.dayNum}</div>
-                        <div className="text-[9px] font-semibold uppercase text-slate-500">{dayObj.dayName}</div>
+                      <th key={dayObj.dateStr} id={"col-" + dayObj.dateStr} className={`w-[48px] sticky top-0 bg-slate-50/95 z-20 border-r border-b border-slate-200 text-center py-2 ${dayObj.dateStr === todayStr ? 'bg-indigo-50 border-b-indigo-300' : ''}`}>
+                        <div className={`text-xs font-bold ${dayObj.dateStr === todayStr ? 'text-indigo-600' : 'text-slate-700'}`}>{dayObj.dayNum}</div>
+                        <div className="text-[9px] font-medium uppercase text-slate-400">{dayObj.dayName}</div>
                       </th>
                     ))}
                   </tr>
@@ -449,15 +425,15 @@ export default function HotelTimelineVIP() {
                   {rooms.map(room => {
                     const roomTodayHk = housekeeping.find(h => h.roomNo === room && h.date === todayStr);
                     const status = roomTodayHk ? roomTodayHk.status : 'Kirli';
-                    let dotColor = "bg-rose-500";
-                    if (status === 'Temiz') dotColor = "bg-emerald-500";
-                    if (status === 'Bakım') dotColor = "bg-sky-500";
-                    if (status === 'Arızalı') dotColor = "bg-red-600 animate-pulse";
+                    let dotColor = "bg-rose-400";
+                    if (status === 'Temiz') dotColor = "bg-emerald-400";
+                    if (status === 'Bakım') dotColor = "bg-sky-400";
+                    if (status === 'Arızalı') dotColor = "bg-rose-600 animate-pulse";
 
                     return (
-                      <tr key={room} className="hover:bg-slate-900/40 group/row">
-                        <td className="sticky left-0 bg-slate-950 group-hover/row:bg-slate-900 z-20 border-r border-b border-slate-800 text-center text-slate-300 shadow-[4px_0_15px_-3px_rgba(0,0,0,0.8)] h-9 font-black text-xs">
-                          <div className="flex items-center justify-center gap-1.5">
+                      <tr key={room} className="hover:bg-slate-50 group/row transition-colors">
+                        <td className="sticky left-0 bg-white group-hover/row:bg-slate-50 z-20 border-r border-b border-slate-200 text-center text-slate-700 shadow-[2px_0_5px_rgba(0,0,0,0.02)] h-10 font-bold text-xs">
+                          <div className="flex items-center justify-center gap-2">
                             <span>{room}</span>
                             <span className={`w-2 h-2 rounded-full ${dotColor}`} title={status}></span>
                           </div>
@@ -470,36 +446,46 @@ export default function HotelTimelineVIP() {
               </table>
             </div>
 
-            <footer className="shrink-0 h-32 bg-slate-950 border-t border-amber-500/20 p-4 flex gap-4 shadow-2xl z-20">
-              <div className="flex-1 bg-slate-900/80 border border-slate-800 rounded-2xl p-3 flex flex-col">
-                <h3 className="text-xs font-bold text-emerald-400 border-b border-slate-800 pb-2 mb-2 flex justify-between items-center">
-                  <span>BUGÜN GİRİŞLER (ÇE-İN)</span><span className="bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-black">{checkInsToday.length} Oda</span>
-                </h3>
-                <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
-                  {checkInsToday.length === 0 ? <p className="text-[11px] text-slate-500 italic">Giriş yok.</p> : checkInsToday.map(r => (
-                    <div key={r.id} className="flex justify-between items-center text-xs bg-slate-800/60 p-2 rounded-xl text-slate-200 font-bold">
-                      <span>Oda {r.roomNo} - <span className="font-normal text-slate-300">{r.guestName}</span></span>
-                      <span className={`px-2 py-0.5 rounded text-[9px] uppercase font-bold ${r.status === 'checked_in' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>{r.status === 'checked_in' ? 'Otelde' : 'Bekliyor'}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="flex-1 bg-slate-900/80 border border-slate-800 rounded-2xl p-3 flex flex-col">
-                <h3 className="text-xs font-bold text-rose-400 border-b border-slate-800 pb-2 mb-2 flex justify-between items-center">
-                  <span>BUGÜN ÇIKIŞLAR (ÇE-OUT)</span><span className="bg-rose-500/20 text-rose-300 px-2 py-0.5 rounded-full font-black">{checkOutsToday.length} Oda</span>
-                </h3>
-                <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
-                  {checkOutsToday.length === 0 ? <p className="text-[11px] text-slate-500 italic">Çıkış yok.</p> : checkOutsToday.map(r => {
-                    const { remaining, currency } = getCalc(r);
-                    return (
-                      <div key={r.id} className="flex justify-between items-center text-xs bg-slate-800/60 p-2 rounded-xl">
-                        <span className="font-bold text-slate-200">Oda {r.roomNo} - <span className="font-normal text-slate-300">{r.guestName}</span></span>
-                        <div className="flex items-center gap-2">
-                          <span className={`font-bold ${remaining > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>{remaining > 0 ? `${remaining} ${currency} Borç` : 'Ödendi'}</span>
-                        </div>
+            {/* YENİ VE DAHA BELİRGİN BUGÜN RAPORU (FOOTER) */}
+            <footer className="shrink-0 bg-white border-t border-slate-200 p-5 shadow-[0_-5px_20px_rgba(0,0,0,0.05)] z-20">
+              <div className="flex flex-col md:flex-row gap-6 max-w-7xl mx-auto">
+                {/* GİRİŞLER */}
+                <div className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col h-40 shadow-sm transition-transform hover:-translate-y-1">
+                  <h3 className="text-xs font-bold text-emerald-600 border-b border-slate-200 pb-2 mb-3 flex justify-between items-center">
+                    <span className="uppercase tracking-wider">Bugün Girişler (Check-in)</span>
+                    <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-lg font-bold">{checkInsToday.length} Oda</span>
+                  </h3>
+                  <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+                    {checkInsToday.length === 0 ? <p className="text-xs text-slate-400 italic">Bugün giriş yapacak misafir yok.</p> : checkInsToday.map(r => (
+                      <div key={r.id} className="flex justify-between items-center text-xs bg-white border border-slate-100 p-2.5 rounded-xl text-slate-700 font-medium shadow-sm">
+                        <span><strong className="text-slate-800">Oda {r.roomNo}</strong> - {r.guestName}</span>
+                        <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase ${r.status === 'checked_in' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{r.status === 'checked_in' ? 'İçeride' : 'Bekleniyor'}</span>
                       </div>
-                    )
-                  })}
+                    ))}
+                  </div>
+                </div>
+
+                {/* ÇIKIŞLAR VE BORÇLAR */}
+                <div className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col h-40 shadow-sm transition-transform hover:-translate-y-1">
+                  <h3 className="text-xs font-bold text-rose-600 border-b border-slate-200 pb-2 mb-3 flex justify-between items-center">
+                    <span className="uppercase tracking-wider">Bugün Çıkışlar (Check-out) & Borç Durumu</span>
+                    <span className="bg-rose-100 text-rose-700 px-3 py-1 rounded-lg font-bold">{checkOutsToday.length} Oda</span>
+                  </h3>
+                  <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+                    {checkOutsToday.length === 0 ? <p className="text-xs text-slate-400 italic">Bugün çıkış yapacak misafir yok.</p> : checkOutsToday.map(r => {
+                      const { remaining, currency } = getCalc(r);
+                      return (
+                        <div key={r.id} className="flex justify-between items-center text-xs bg-white border border-slate-100 p-2.5 rounded-xl text-slate-700 shadow-sm">
+                          <span><strong className="text-slate-800">Oda {r.roomNo}</strong> - {r.guestName}</span>
+                          <div className="flex items-center gap-2">
+                            <span className={`font-bold px-2 py-1 rounded-md text-[10px] ${remaining > 0 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                              {remaining > 0 ? `Kalan: ${remaining} ${currency}` : 'Ödendi'}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
               </div>
             </footer>
@@ -508,194 +494,201 @@ export default function HotelTimelineVIP() {
 
         {/* 2. SEKME: KASA VE GÜNLÜK RAPORLAR */}
         {activeTab === "kasa" && (
-          <div className="flex-1 flex flex-col p-6 overflow-y-auto bg-gradient-to-b from-[#070B14] to-slate-950">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-              <div className="bg-gradient-to-br from-slate-900 to-slate-950 border border-amber-500/30 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-28 h-28 bg-amber-500/10 rounded-bl-full"></div>
-                <h3 className="text-slate-400 text-xs font-black uppercase tracking-wider mb-2">Türk Lirası Kasa</h3>
-                <div className={`text-4xl font-black ${kasaBalances.TL.total >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>
-                  {kasaBalances.TL.total.toLocaleString()} <span className="text-xl">TL</span>
+          <div className="flex-1 flex flex-col p-8 overflow-y-auto bg-slate-50 animate-in fade-in duration-500">
+            {/* KASA KARTLARI */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10 max-w-7xl mx-auto w-full">
+              <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-xl shadow-slate-200/50 hover:-translate-y-1 transition-transform relative overflow-hidden">
+                <div className="absolute -top-6 -right-6 w-24 h-24 bg-gradient-to-br from-amber-100 to-amber-50 rounded-full opacity-50"></div>
+                <h3 className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-2">Türk Lirası Kasa</h3>
+                <div className={`text-4xl font-black tracking-tight ${kasaBalances.TL.total >= 0 ? 'text-slate-800' : 'text-rose-500'}`}>
+                  {kasaBalances.TL.total.toLocaleString()} <span className="text-xl text-slate-400 font-medium">TL</span>
                 </div>
               </div>
-              <div className="bg-gradient-to-br from-slate-900 to-slate-950 border border-emerald-500/30 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-28 h-28 bg-emerald-500/10 rounded-bl-full"></div>
-                <h3 className="text-slate-400 text-xs font-black uppercase tracking-wider mb-2">Amerikan Doları Kasa</h3>
-                <div className={`text-4xl font-black ${kasaBalances.USD.total >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {kasaBalances.USD.total.toLocaleString()} <span className="text-xl">USD</span>
+              <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-xl shadow-slate-200/50 hover:-translate-y-1 transition-transform relative overflow-hidden">
+                <div className="absolute -top-6 -right-6 w-24 h-24 bg-gradient-to-br from-emerald-100 to-emerald-50 rounded-full opacity-50"></div>
+                <h3 className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-2">Amerikan Doları Kasa</h3>
+                <div className={`text-4xl font-black tracking-tight ${kasaBalances.USD.total >= 0 ? 'text-slate-800' : 'text-rose-500'}`}>
+                  {kasaBalances.USD.total.toLocaleString()} <span className="text-xl text-slate-400 font-medium">USD</span>
                 </div>
               </div>
-              <div className="bg-gradient-to-br from-slate-900 to-slate-950 border border-sky-500/30 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-28 h-28 bg-sky-500/10 rounded-bl-full"></div>
-                <h3 className="text-slate-400 text-xs font-black uppercase tracking-wider mb-2">Euro Kasa</h3>
-                <div className={`text-4xl font-black ${kasaBalances.EUR.total >= 0 ? 'text-sky-400' : 'text-rose-400'}`}>
-                  {kasaBalances.EUR.total.toLocaleString()} <span className="text-xl">EUR</span>
+              <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-xl shadow-slate-200/50 hover:-translate-y-1 transition-transform relative overflow-hidden">
+                <div className="absolute -top-6 -right-6 w-24 h-24 bg-gradient-to-br from-sky-100 to-sky-50 rounded-full opacity-50"></div>
+                <h3 className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-2">Euro Kasa</h3>
+                <div className={`text-4xl font-black tracking-tight ${kasaBalances.EUR.total >= 0 ? 'text-slate-800' : 'text-rose-500'}`}>
+                  {kasaBalances.EUR.total.toLocaleString()} <span className="text-xl text-slate-400 font-medium">EUR</span>
                 </div>
               </div>
             </div>
 
-            {/* KASADAN MANUEL / CARİYE BAĞLI İŞLEM EKLEME */}
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl mb-8 h-fit">
-                <h3 className="text-base font-black text-amber-400 mb-4 border-b border-slate-800 pb-2">Ana Kasaya Gelir / Gider İşle</h3>
-                <div className="space-y-4 max-w-5xl">
-                  <div className="flex gap-2">
-                    <button onClick={() => setKasaType("income")} className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all ${kasaType==='income' ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20' : 'bg-slate-950 text-slate-400'}`}>GELİR EKLE (+)</button>
-                    <button onClick={() => setKasaType("expense")} className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all ${kasaType==='expense' ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/20' : 'bg-slate-950 text-slate-400'}`}>GİDER / ÖDEME ÇIK (-)</button>
+            <div className="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* MANUEL İŞLEM (SOL) */}
+              <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-lg shadow-slate-200/50 h-fit">
+                <h3 className="text-sm font-black text-indigo-700 mb-5 uppercase tracking-wider">Hızlı İşlem / Gider Gir</h3>
+                <div className="space-y-4">
+                  <div className="flex gap-2 bg-slate-50 p-1 rounded-2xl border border-slate-100">
+                    <button onClick={() => setKasaType("income")} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${kasaType==='income' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>GELİR (+)</button>
+                    <button onClick={() => setKasaType("expense")} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${kasaType==='expense' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>GİDER (-)</button>
                   </div>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-[10px] text-slate-400 mb-1 font-bold">Kategori Seçimi</label>
-                      <select value={kasaCategory} onChange={e=>setKasaCategory(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 outline-none font-bold">
-                        {activities.map(a => <option key={a} value={a}>{a}</option>)}
-                        <option value="Market / Mutfak Gideri">Market / Mutfak Gideri</option>
-                        <option value="Genel Gider">Genel Gider / Diğer</option>
-                      </select>
-                    </div>
+                  <select value={kasaCategory} onChange={e=>setKasaCategory(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-700 outline-none focus:border-indigo-500 font-medium transition-all">
+                    {activities.map(a => <option key={a} value={a}>{a}</option>)}
+                    <option value="Market / Mutfak Gideri">Market / Mutfak Gideri</option>
+                    <option value="Genel Gider">Genel Gider / Diğer</option>
+                  </select>
 
-                    {/* İŞTE KASADAN CARİYE ENTEGRASYON SEÇİMİ */}
-                    <div>
-                      <label className="block text-[10px] text-amber-500 mb-1 font-black">İlgili Cari (Seçilirse Cari Bakiyesine de İşler)</label>
-                      <select value={kasaSelectedCari} onChange={e=>setKasaSelectedCari(e.target.value)} className="w-full bg-slate-950 border border-amber-500/50 rounded-xl p-3 text-xs text-amber-400 font-bold outline-none">
-                        <option value="">-- Bağımsız İşlem (Cari Seçme) --</option>
-                        {caris.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
-                    </div>
-                  </div>
+                  <select value={kasaSelectedCari} onChange={e=>setKasaSelectedCari(e.target.value)} className="w-full bg-indigo-50 border border-indigo-100 rounded-xl p-3 text-sm text-indigo-700 font-bold outline-none focus:border-indigo-500 transition-all">
+                    <option value="">-- Cari Seçme (Bağımsız) --</option>
+                    {caris.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
 
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <input type="number" value={kasaAmount} onChange={e=>setKasaAmount(e.target.value)} placeholder="Tutar" className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 outline-none" />
-                    <select value={kasaCurrency} onChange={e=>setKasaCurrency(e.target.value)} className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-amber-400 font-bold outline-none">
+                  <div className="grid grid-cols-2 gap-3">
+                    <input type="number" value={kasaAmount} onChange={e=>setKasaAmount(e.target.value)} placeholder="Tutar" className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-800 outline-none focus:border-indigo-500" />
+                    <select value={kasaCurrency} onChange={e=>setKasaCurrency(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-700 font-bold outline-none">
                       <option value="TL">TL</option><option value="USD">USD</option><option value="EUR">EUR</option>
                     </select>
-                    <select value={kasaMethod} onChange={e=>setKasaMethod(e.target.value)} className="col-span-2 bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 outline-none">
-                      <option value="cash">Nakit Kasa</option><option value="cc">Kredi Kartı / POS</option>
-                    </select>
                   </div>
-                  <input type="text" value={kasaDesc} onChange={e=>setKasaDesc(e.target.value)} placeholder="Açıklama (Örn: Mutfak sebze alışverişi)" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 outline-none" />
-                  <button onClick={handleAddManualTransaction} className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-black py-3.5 rounded-xl shadow-lg transition-all text-xs tracking-wider uppercase">KASAYA İŞLE</button>
-                </div>
-            </div>
 
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-800 pb-4 mb-4 gap-4">
-                <h3 className="text-lg font-black text-amber-400">📊 KASA GÜNLÜK DÖKÜMÜ</h3>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => setReportFilterDate(yesterdayStr)} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold transition-all">Dün</button>
-                  <button onClick={() => setReportFilterDate(todayStr)} className="px-3 py-1.5 bg-amber-500 text-slate-950 rounded-xl text-xs font-black transition-all">Bugün</button>
-                  <button onClick={() => setReportFilterDate(tomorrowStr)} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold transition-all">Yarın</button>
-                  <input type="date" value={reportFilterDate} onChange={e => setReportFilterDate(e.target.value)} className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-amber-400 font-bold outline-none" />
+                  <select value={kasaMethod} onChange={e=>setKasaMethod(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-700 outline-none">
+                    <option value="cash">Nakit Kasa</option><option value="cc">Kredi Kartı / POS</option>
+                  </select>
+
+                  <input type="text" value={kasaDesc} onChange={e=>setKasaDesc(e.target.value)} placeholder="Açıklama (Örn: Yakıt)" className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-800 outline-none focus:border-indigo-500" />
+                  
+                  <button onClick={handleAddManualTransaction} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-indigo-200 transition-all text-sm mt-2">KASAYA İŞLE</button>
                 </div>
               </div>
-              <div className="overflow-auto max-h-72 custom-scrollbar">
-                <table className="w-full text-left text-xs">
-                  <thead className="text-slate-400 bg-slate-950">
-                    <tr><th className="p-3 rounded-l-xl">Kategori</th><th className="p-3">Açıklama</th><th className="p-3">Yöntem</th><th className="p-3 text-right rounded-r-xl">Tutar</th></tr>
-                  </thead>
-                  <tbody>
-                    {filteredTransactions.length === 0 ? <tr><td colSpan="4" className="text-center p-6 text-slate-500 italic">Kayıtlı işlem bulunmuyor.</td></tr> :
-                      filteredTransactions.map(tx => (
-                        <tr key={tx.id} className="border-b border-slate-800/60 hover:bg-slate-800/30">
-                          <td className="p-3 font-bold text-amber-400">{tx.category || 'Genel'}</td>
-                          <td className="p-3 text-slate-300 font-medium">{tx.desc}</td>
-                          <td className="p-3"><span className="px-2 py-1 bg-slate-950 rounded-lg text-[10px]">{tx.method === 'cash' ? 'Nakit' : 'POS'}</span></td>
-                          <td className={`p-3 text-right font-black ${tx.type === 'income' ? 'text-emerald-400' : 'text-rose-400'}`}>{tx.type === 'income' ? '+' : '-'}{tx.amount.toLocaleString()} {tx.currency || 'TL'}</td>
-                        </tr>
-                      ))
-                    }
-                  </tbody>
-                </table>
+
+              {/* RAPOR (SAĞ) */}
+              <div className="lg:col-span-2 bg-white border border-slate-100 rounded-3xl p-6 shadow-lg shadow-slate-200/50 flex flex-col h-[550px]">
+                <div className="flex flex-col md:flex-row justify-between items-center border-b border-slate-100 pb-4 mb-4 gap-4 shrink-0">
+                  <h3 className="text-sm font-black text-slate-700 uppercase tracking-wider">Günlük İşlem Raporu</h3>
+                  <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-200">
+                    <button onClick={() => setReportFilterDate(yesterdayStr)} className="px-4 py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-white hover:shadow-sm transition-all">Dün</button>
+                    <button onClick={() => setReportFilterDate(todayStr)} className="px-4 py-2 rounded-lg text-xs font-bold bg-white text-indigo-600 shadow-sm transition-all">Bugün</button>
+                    <button onClick={() => setReportFilterDate(tomorrowStr)} className="px-4 py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-white hover:shadow-sm transition-all">Yarın</button>
+                    <input type="date" value={reportFilterDate} onChange={e => setReportFilterDate(e.target.value)} className="bg-transparent px-2 py-1 text-xs text-slate-700 font-bold outline-none cursor-pointer" />
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-auto custom-scrollbar">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-50 text-slate-500 sticky top-0">
+                      <tr><th className="p-4 rounded-l-xl font-medium">Kategori</th><th className="p-4 font-medium">Açıklama</th><th className="p-4 font-medium">Yöntem</th><th className="p-4 text-right rounded-r-xl font-medium">Tutar</th></tr>
+                    </thead>
+                    <tbody>
+                      {filteredTransactions.length === 0 ? <tr><td colSpan="4" className="text-center p-8 text-slate-400 italic">Kayıtlı işlem bulunmuyor.</td></tr> :
+                        filteredTransactions.map(tx => (
+                          <tr key={tx.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                            <td className="p-4 font-bold text-slate-700">{tx.category || 'Genel'}</td>
+                            <td className="p-4 text-slate-600">{tx.desc}</td>
+                            <td className="p-4"><span className="px-3 py-1 bg-slate-100 rounded-lg text-[10px] font-bold text-slate-500 uppercase">{tx.method === 'cash' ? 'Nakit' : 'POS'}</span></td>
+                            <td className={`p-4 text-right font-black ${tx.type === 'income' ? 'text-emerald-500' : 'text-rose-500'}`}>{tx.type === 'income' ? '+' : '-'}{tx.amount.toLocaleString()} {tx.currency || 'TL'}</td>
+                          </tr>
+                        ))
+                      }
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* 3. SEKME: CARİ HESAPLAR (YENİ LİSTE VE DETAY EKRANI) */}
+        {/* 3. SEKME: CARİ HESAPLAR */}
         {activeTab === "caris" && (
-          <div className="flex-1 flex flex-col p-6 overflow-y-auto bg-gradient-to-b from-[#070B14] to-slate-950">
+          <div className="flex-1 flex flex-col p-8 overflow-y-auto bg-slate-50 animate-in fade-in duration-500">
             
-            {/* EĞER BİR CARİ SEÇİLDİYSE DETAY EKRANINI GÖSTER */}
+            {/* CARİ DETAY EKRANI (MASTER/DETAIL) */}
             {selectedCariId ? (
-              <div className="animate-in fade-in zoom-in duration-300 h-full flex flex-col">
+              <div className="max-w-7xl mx-auto w-full h-full flex flex-col animate-in slide-in-from-right-4 duration-300">
                 {(() => {
                   const currentCari = caris.find(c => c.id === selectedCariId);
                   if (!currentCari) return null;
                   const cBals = getCariBalances(currentCari.transactions);
                   
                   return (
-                    <div className="bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl p-6 flex flex-col flex-1 overflow-hidden">
+                    <div className="bg-white border border-slate-100 rounded-3xl shadow-xl shadow-slate-200/50 p-8 flex flex-col flex-1 overflow-hidden">
                       
-                      {/* ÜST BİLGİ & GERİ DÖN BUTONU */}
-                      <div className="flex justify-between items-start border-b border-slate-800 pb-4 mb-6 shrink-0">
+                      {/* ÜST BİLGİ */}
+                      <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-100 pb-6 mb-6 shrink-0 gap-4">
                         <div>
-                          <button onClick={() => setSelectedCariId(null)} className="text-amber-500 hover:text-amber-400 font-black text-xs mb-3 flex items-center gap-1 transition-all">
-                            <span>←</span> REHBERE GERİ DÖN
+                          <button onClick={() => setSelectedCariId(null)} className="text-slate-400 hover:text-indigo-600 font-bold text-xs mb-3 flex items-center gap-2 transition-colors">
+                            <span className="text-lg">←</span> Geri Dön
                           </button>
-                          <h3 className="text-3xl font-black text-slate-100">{currentCari.name}</h3>
-                          <p className="text-sm text-slate-400 font-bold mt-1">{currentCari.type} <span className="mx-2">|</span> 📞 {currentCari.phone || 'Belirtilmemiş'}</p>
+                          <h3 className="text-3xl font-black text-slate-800 tracking-tight">{currentCari.name}</h3>
+                          <p className="text-sm text-slate-500 font-medium mt-1 bg-slate-50 inline-block px-3 py-1 rounded-lg border border-slate-100">{currentCari.type} • {currentCari.phone || 'Tel Yok'}</p>
                         </div>
-                        <div className="flex gap-4">
-                          <div className="bg-slate-950 border border-amber-500/20 p-3 rounded-2xl text-center min-w-[100px]">
-                            <span className="block text-[10px] text-amber-500 uppercase font-black mb-1">TL Bakiye</span>
-                            <span className={`text-xl font-black ${cBals.TL >= 0 ? 'text-slate-200' : 'text-rose-400'}`}>{cBals.TL.toLocaleString()}</span>
+                        <div className="flex gap-3">
+                          <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-center min-w-[110px]">
+                            <span className="block text-[10px] text-slate-500 uppercase font-bold mb-1">TL Bakiye</span>
+                            <span className={`text-xl font-black ${cBals.TL >= 0 ? 'text-slate-800' : 'text-rose-500'}`}>{cBals.TL.toLocaleString()}</span>
                           </div>
-                          <div className="bg-slate-950 border border-emerald-500/20 p-3 rounded-2xl text-center min-w-[100px]">
-                            <span className="block text-[10px] text-emerald-500 uppercase font-black mb-1">USD Bakiye</span>
-                            <span className={`text-xl font-black ${cBals.USD >= 0 ? 'text-slate-200' : 'text-rose-400'}`}>{cBals.USD.toLocaleString()}</span>
+                          <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-center min-w-[110px]">
+                            <span className="block text-[10px] text-slate-500 uppercase font-bold mb-1">USD Bakiye</span>
+                            <span className={`text-xl font-black ${cBals.USD >= 0 ? 'text-slate-800' : 'text-rose-500'}`}>{cBals.USD.toLocaleString()}</span>
                           </div>
-                          <div className="bg-slate-950 border border-sky-500/20 p-3 rounded-2xl text-center min-w-[100px]">
-                            <span className="block text-[10px] text-sky-500 uppercase font-black mb-1">EUR Bakiye</span>
-                            <span className={`text-xl font-black ${cBals.EUR >= 0 ? 'text-slate-200' : 'text-rose-400'}`}>{cBals.EUR.toLocaleString()}</span>
+                          <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-center min-w-[110px]">
+                            <span className="block text-[10px] text-slate-500 uppercase font-bold mb-1">EUR Bakiye</span>
+                            <span className={`text-xl font-black ${cBals.EUR >= 0 ? 'text-slate-800' : 'text-rose-500'}`}>{cBals.EUR.toLocaleString()}</span>
                           </div>
                         </div>
                       </div>
 
-                      {/* İŞLEM EKLEME FORMU & GEÇMİŞ İŞLEMLER */}
+                      {/* MANUEL CARİ İŞLEM & EKSTRE */}
                       <div className="flex flex-col lg:flex-row gap-8 flex-1 overflow-hidden">
                         
-                        {/* SOL: YENİ İŞLEM EKLE */}
-                        <div className="w-full lg:w-1/3 space-y-4 bg-slate-950/50 p-5 rounded-2xl border border-slate-800 overflow-y-auto custom-scrollbar">
-                          <h4 className="text-sm font-black text-sky-400 border-b border-slate-800 pb-2 mb-3">Cari Hesaba Manuel İşlem Gir</h4>
+                        <div className="w-full lg:w-1/3 space-y-5 bg-slate-50 p-6 rounded-3xl border border-slate-100 overflow-y-auto custom-scrollbar h-fit">
+                          <h4 className="text-sm font-black text-indigo-700 uppercase tracking-wider mb-2">Cari Manuel İşlem Ekle</h4>
                           
-                          <div className="flex gap-2">
-                            <button onClick={() => setCariTxType("arti")} className={`flex-1 py-2 rounded-xl text-[10px] font-black transition-all ${cariTxType==='arti' ? 'bg-amber-500 text-slate-950' : 'bg-slate-900 text-slate-400'}`}>HİZMET ALDIK (+ BORÇ)</button>
-                            <button onClick={() => setCariTxType("eksi")} className={`flex-1 py-2 rounded-xl text-[10px] font-black transition-all ${cariTxType==='eksi' ? 'bg-emerald-500 text-slate-950' : 'bg-slate-900 text-slate-400'}`}>ÖDEME YAPTIK (- DÜŞ)</button>
+                          <div className="flex gap-2 bg-white p-1 rounded-2xl border border-slate-200">
+                            <button onClick={() => setCariTxType("arti")} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${cariTxType==='arti' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>HİZMET ALDIK (+)</button>
+                            <button onClick={() => setCariTxType("eksi")} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${cariTxType==='eksi' ? 'bg-emerald-50 text-emerald-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>ÖDEME YAPTIK (-)</button>
                           </div>
 
-                          <div>
-                            <label className="block text-[10px] text-slate-400 mb-1 font-bold">Kategori Seçimi</label>
-                            <select value={cariTxCategory} onChange={e=>setCariTxCategory(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 font-bold outline-none">
-                              {activities.map(a => <option key={a} value={a}>{a}</option>)}
-                            </select>
-                          </div>
+                          <select value={cariTxCategory} onChange={e=>setCariTxCategory(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl p-3.5 text-sm text-slate-700 font-medium outline-none focus:border-indigo-500">
+                            {activities.map(a => <option key={a} value={a}>{a}</option>)}
+                          </select>
 
-                          <div className="grid grid-cols-2 gap-2">
-                            <input type="number" value={cariTxAmount} onChange={e=>setCariTxAmount(e.target.value)} placeholder="Tutar" className="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 outline-none" />
-                            <select value={cariTxCurrency} onChange={e=>setCariTxCurrency(e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-amber-400 font-bold outline-none">
+                          <div className="grid grid-cols-2 gap-3">
+                            <input type="number" value={cariTxAmount} onChange={e=>setCariTxAmount(e.target.value)} placeholder="Tutar" className="bg-white border border-slate-200 rounded-xl p-3.5 text-sm text-slate-800 outline-none focus:border-indigo-500" />
+                            <select value={cariTxCurrency} onChange={e=>setCariTxCurrency(e.target.value)} className="bg-white border border-slate-200 rounded-xl p-3.5 text-sm text-slate-700 font-bold outline-none">
                               <option value="TL">TL</option><option value="USD">USD</option><option value="EUR">EUR</option>
                             </select>
                           </div>
 
-                          <input type="text" value={cariTxDesc} onChange={e=>setCariTxDesc(e.target.value)} placeholder="İşlem Açıklaması" className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 outline-none" />
+                          <input type="text" value={cariTxDesc} onChange={e=>setCariTxDesc(e.target.value)} placeholder="İşlem Detayı" className="w-full bg-white border border-slate-200 rounded-xl p-3.5 text-sm text-slate-800 outline-none focus:border-indigo-500" />
                           
-                          <button onClick={() => handleCariTransaction(currentCari)} className="w-full bg-sky-500 hover:bg-sky-400 text-slate-950 font-black py-3 rounded-xl shadow-lg transition-all text-xs tracking-wider uppercase">İŞLEMİ KAYDET</button>
+                          <div className="bg-white border border-slate-200 p-4 rounded-2xl flex flex-col gap-3 shadow-sm">
+                            <label className="flex items-center gap-3 cursor-pointer">
+                              <input type="checkbox" checked={cariTxPushKasa} onChange={e=>setCariTxPushKasa(e.target.checked)} className="w-5 h-5 accent-indigo-600 rounded" />
+                              <span className="text-sm font-bold text-slate-700">Bu işlemi Ana Kasaya da yansıt</span>
+                            </label>
+                            {cariTxPushKasa && (
+                              <select value={cariTxKasaMethod} onChange={e=>setCariTxKasaMethod(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600 outline-none font-bold">
+                                <option value="cash">Nakit Kasasına İşle</option>
+                                <option value="cc">Kredi Kartı / POS'a İşle</option>
+                              </select>
+                            )}
+                          </div>
+
+                          <button onClick={() => handleCariTransaction(currentCari)} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-indigo-200 transition-all text-sm uppercase">İşlemi Kaydet</button>
                         </div>
 
-                        {/* SAĞ: GEÇMİŞ İŞLEMLER TABLOSU */}
                         <div className="w-full lg:w-2/3 flex flex-col h-full overflow-hidden">
-                          <h4 className="text-sm font-black text-slate-300 border-b border-slate-800 pb-2 mb-3 shrink-0">Hesap Ekstresi & Tüm Hareketler</h4>
-                          <div className="flex-1 overflow-auto custom-scrollbar bg-slate-950/30 rounded-2xl border border-slate-800">
-                            <table className="w-full text-left text-xs">
-                              <thead className="text-slate-400 bg-slate-950 sticky top-0">
-                                <tr><th className="p-3">Tarih</th><th className="p-3">Kategori</th><th className="p-3">Açıklama</th><th className="p-3 text-right">Tutar</th></tr>
+                          <h4 className="text-sm font-black text-slate-700 uppercase tracking-wider mb-4 shrink-0">Cari Hesap Ekstresi</h4>
+                          <div className="flex-1 overflow-auto custom-scrollbar bg-white rounded-3xl border border-slate-100 shadow-inner">
+                            <table className="w-full text-left text-sm">
+                              <thead className="text-slate-500 bg-slate-50 sticky top-0 shadow-sm">
+                                <tr><th className="p-4">Tarih</th><th className="p-4">Kategori</th><th className="p-4">Açıklama</th><th className="p-4 text-right">Tutar</th></tr>
                               </thead>
                               <tbody>
-                                {(currentCari.transactions || []).length === 0 ? <tr><td colSpan="4" className="text-center p-6 text-slate-500 italic">Bu cariye ait henüz işlem bulunmuyor.</td></tr> :
+                                {(currentCari.transactions || []).length === 0 ? <tr><td colSpan="4" className="text-center p-8 text-slate-400 italic">Hareket bulunmuyor.</td></tr> :
                                   currentCari.transactions.map(tx => (
-                                    <tr key={tx.id} className="border-b border-slate-800/60 hover:bg-slate-800/30">
-                                      <td className="p-3 text-slate-400 font-medium">{tx.date}</td>
-                                      <td className="p-3 font-bold text-sky-400">{tx.category || 'Genel'}</td>
-                                      <td className="p-3 text-slate-200">{tx.desc}</td>
-                                      <td className={`p-3 text-right font-black ${tx.type === 'arti' ? 'text-amber-400' : 'text-emerald-400'}`}>{tx.type === 'arti' ? '+ Borç' : '- Ödendi'} <br/>{tx.amount.toLocaleString()} {tx.currency || 'TL'}</td>
+                                    <tr key={tx.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                                      <td className="p-4 text-slate-500 font-medium">{tx.date}</td>
+                                      <td className="p-4 font-bold text-slate-700">{tx.category || 'Genel'}</td>
+                                      <td className="p-4 text-slate-600">{tx.desc}</td>
+                                      <td className={`p-4 text-right font-black ${tx.type === 'arti' ? 'text-amber-500' : 'text-emerald-500'}`}>{tx.type === 'arti' ? '+ Borç' : '- Ödendi'} <br/><span className="text-xs">{tx.amount.toLocaleString()} {tx.currency || 'TL'}</span></td>
                                     </tr>
                                   ))
                                 }
@@ -705,56 +698,56 @@ export default function HotelTimelineVIP() {
                         </div>
                       </div>
                       
-                      <div className="mt-4 pt-4 border-t border-slate-800 text-right shrink-0">
-                        <button onClick={() => handleDeleteCari(currentCari.id)} className="text-rose-400 hover:bg-rose-500 hover:text-white px-4 py-2 rounded-xl text-xs font-bold transition-colors">Bu Cariyi Tamamen Sil</button>
+                      <div className="mt-6 pt-4 border-t border-slate-100 text-right shrink-0">
+                        <button onClick={() => handleDeleteCari(currentCari.id)} className="text-rose-500 hover:bg-rose-50 px-5 py-2.5 rounded-xl text-sm font-bold transition-colors">Cariyi Sil</button>
                       </div>
                     </div>
                   );
                 })()}
               </div>
             ) : (
-              // CARİ LİSTESİ (REHBER) GÖRÜNÜMÜ
-              <div className="animate-in fade-in duration-300">
-                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl mb-8 flex flex-col md:flex-row justify-between items-center gap-4">
+              // CARİ REHBERİ
+              <div className="max-w-7xl mx-auto w-full animate-in fade-in duration-500">
+                <div className="bg-white border border-slate-100 rounded-3xl p-8 shadow-xl shadow-slate-200/50 mb-8 flex flex-col lg:flex-row justify-between items-center gap-6">
                   <div>
-                    <h3 className="text-lg font-black text-sky-400 mb-1">Cari Hesaplar & Rehber</h3>
-                    <p className="text-xs text-slate-400">Detayları ve ekstreyi görmek için aşağıdan bir cariye tıklayın.</p>
+                    <h3 className="text-xl font-black text-slate-800 tracking-tight mb-1">Cari Rehberi</h3>
+                    <p className="text-sm text-slate-500 font-medium">Yeni ekleyin veya işlem yapmak için seçin.</p>
                   </div>
-                  <div className="flex gap-2 w-full md:w-auto">
-                    <input type="text" value={newCariName} onChange={e=>setNewCariName(e.target.value)} placeholder="Cari Adı (Örn: Yavuz Bey)" className="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 outline-none focus:border-sky-500" />
-                    <select value={newCariType} onChange={e=>setNewCariType(e.target.value)} className="bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 font-bold outline-none">
+                  <div className="flex gap-3 w-full lg:w-auto bg-slate-50 p-2 rounded-2xl border border-slate-100">
+                    <input type="text" value={newCariName} onChange={e=>setNewCariName(e.target.value)} placeholder="Cari Adı (Yavuz Bey)" className="flex-1 bg-white border border-slate-200 rounded-xl p-3 text-sm text-slate-800 outline-none focus:border-indigo-500" />
+                    <select value={newCariType} onChange={e=>setNewCariType(e.target.value)} className="bg-white border border-slate-200 rounded-xl p-3 text-sm text-slate-700 font-bold outline-none">
                       <option value="Acente / Şahıs">Acente / Şahıs</option><option value="Tedarikçi">Tedarikçi</option><option value="Market / Mutfak">Market / Gider</option>
                     </select>
-                    <button onClick={handleAddCari} className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-black px-5 py-2.5 rounded-xl shadow-lg transition-all text-xs uppercase">Ekle</button>
+                    <button onClick={handleAddCari} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 py-3 rounded-xl shadow-md transition-colors text-sm">Ekle</button>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-                  {caris.length === 0 ? <p className="text-slate-500 italic text-sm col-span-full text-center py-10">Henüz kayıtlı cari hesap yok.</p> :
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {caris.length === 0 ? <p className="text-slate-400 italic text-sm col-span-full text-center py-10">Kayıtlı cari yok.</p> :
                     caris.map(cari => {
                       const cBals = getCariBalances(cari.transactions);
                       return (
-                        <div key={cari.id} onClick={() => setSelectedCariId(cari.id)} className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl hover:border-sky-500/40 hover:shadow-sky-500/10 cursor-pointer transition-all transform hover:-translate-y-1">
-                          <h4 className="text-base font-black text-slate-100 mb-1 truncate">{cari.name}</h4>
-                          <span className="inline-block px-2 py-1 bg-slate-950 border border-slate-800 rounded-md text-[9px] text-slate-400 font-bold uppercase mb-4">{cari.type}</span>
+                        <div key={cari.id} onClick={() => setSelectedCariId(cari.id)} className="bg-white border border-slate-100 rounded-3xl p-6 shadow-lg shadow-slate-200/40 hover:border-indigo-300 hover:shadow-indigo-100 cursor-pointer transition-all transform hover:-translate-y-1 group">
+                          <h4 className="text-lg font-black text-slate-800 mb-1 truncate">{cari.name}</h4>
+                          <span className="inline-block px-3 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[10px] text-slate-500 font-bold uppercase mb-5">{cari.type}</span>
                           
-                          <div className="space-y-2 mb-4">
-                            <div className="flex justify-between items-center text-xs border-b border-slate-800/60 pb-1">
-                              <span className="text-slate-500">TL Bakiye:</span>
-                              <span className={`font-black ${cBals.TL >= 0 ? 'text-slate-300' : 'text-rose-400'}`}>{cBals.TL.toLocaleString()}</span>
+                          <div className="space-y-3 mb-6">
+                            <div className="flex justify-between items-center text-sm border-b border-slate-50 pb-2">
+                              <span className="text-slate-400 font-medium">TL Bakiye:</span>
+                              <span className={`font-black ${cBals.TL >= 0 ? 'text-slate-700' : 'text-rose-500'}`}>{cBals.TL.toLocaleString()}</span>
                             </div>
-                            <div className="flex justify-between items-center text-xs border-b border-slate-800/60 pb-1">
-                              <span className="text-slate-500">USD Bakiye:</span>
-                              <span className={`font-black ${cBals.USD >= 0 ? 'text-slate-300' : 'text-rose-400'}`}>{cBals.USD.toLocaleString()}</span>
+                            <div className="flex justify-between items-center text-sm border-b border-slate-50 pb-2">
+                              <span className="text-slate-400 font-medium">USD Bakiye:</span>
+                              <span className={`font-black ${cBals.USD >= 0 ? 'text-slate-700' : 'text-rose-500'}`}>{cBals.USD.toLocaleString()}</span>
                             </div>
-                            <div className="flex justify-between items-center text-xs">
-                              <span className="text-slate-500">EUR Bakiye:</span>
-                              <span className={`font-black ${cBals.EUR >= 0 ? 'text-slate-300' : 'text-rose-400'}`}>{cBals.EUR.toLocaleString()}</span>
+                            <div className="flex justify-between items-center text-sm">
+                              <span className="text-slate-400 font-medium">EUR Bakiye:</span>
+                              <span className={`font-black ${cBals.EUR >= 0 ? 'text-slate-700' : 'text-rose-500'}`}>{cBals.EUR.toLocaleString()}</span>
                             </div>
                           </div>
                           
-                          <div className="w-full text-center bg-sky-500/10 text-sky-400 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-sky-500/20">
-                            Hesap Ekstresi Göster →
+                          <div className="w-full text-center bg-indigo-50 text-indigo-600 py-3 rounded-xl text-xs font-bold uppercase tracking-wider group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                            Detay & İşlem Ekle →
                           </div>
                         </div>
                       );
@@ -766,155 +759,149 @@ export default function HotelTimelineVIP() {
           </div>
         )}
 
-        {/* 4. SEKME: GÜNLÜK HOUSEKEEPING (YENİ SÜRÜM) */}
+        {/* 4. SEKME: HOUSEKEEPING */}
         {activeTab === "hk" && (
-          <div className="flex-1 flex flex-col p-6 overflow-y-auto bg-gradient-to-b from-[#070B14] to-slate-950">
-            
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 border-b border-slate-800 pb-4 gap-4">
-              <h3 className="text-lg font-black text-purple-400 flex items-center gap-2">
-                <span>🧹 ODA TEMİZLİK & GÜNLÜK LOG SİSTEMİ</span>
-              </h3>
-              <div className="flex items-center gap-2 bg-slate-900 p-2 rounded-2xl border border-slate-800">
-                <span className="text-xs text-slate-400 font-bold px-2">Günlük Rapor:</span>
-                <button onClick={() => setHkFilterDate(yesterdayStr)} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold transition-all">Dün</button>
-                <button onClick={() => setHkFilterDate(todayStr)} className="px-3 py-1.5 bg-purple-500 text-white rounded-xl text-xs font-black transition-all shadow-lg shadow-purple-500/30">Bugün</button>
-                <button onClick={() => setHkFilterDate(tomorrowStr)} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold transition-all">Yarın</button>
-                <input type="date" value={hkFilterDate} onChange={e => setHkFilterDate(e.target.value)} className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-purple-400 font-bold outline-none" />
+          <div className="flex-1 flex flex-col p-8 overflow-y-auto bg-slate-50 animate-in fade-in duration-500">
+            <div className="max-w-7xl mx-auto w-full">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 border-b border-slate-200 pb-6 gap-4">
+                <h3 className="text-xl font-black text-slate-800 tracking-tight">🧹 Günlük Temizlik Logları</h3>
+                <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm">
+                  <button onClick={() => setHkFilterDate(yesterdayStr)} className="px-4 py-2 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 transition-colors">Dün</button>
+                  <button onClick={() => setHkFilterDate(todayStr)} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-md transition-all">Bugün</button>
+                  <button onClick={() => setHkFilterDate(tomorrowStr)} className="px-4 py-2 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 transition-colors">Yarın</button>
+                  <input type="date" value={hkFilterDate} onChange={e => setHkFilterDate(e.target.value)} className="bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-xs text-slate-700 font-bold outline-none cursor-pointer" />
+                </div>
               </div>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-              {rooms.map(room => {
-                const roomHk = housekeeping.find(h => h.roomNo === room && h.date === hkFilterDate) || { status: 'Kirli', note: '' };
-                const st = roomHk.status;
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {rooms.map(room => {
+                  const roomHk = housekeeping.find(h => h.roomNo === room && h.date === hkFilterDate) || { status: 'Kirli', note: '' };
+                  const st = roomHk.status;
 
-                let badgeColor = "bg-rose-500/20 text-rose-400 border-rose-500/30";
-                if (st === 'Temiz') badgeColor = "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
-                if (st === 'Bakım') badgeColor = "bg-sky-500/20 text-sky-400 border-sky-500/30";
-                if (st === 'Arızalı') badgeColor = "bg-red-600/30 text-red-400 border-red-500/50 animate-pulse";
+                  let badgeColor = "bg-rose-50 text-rose-600 border-rose-200";
+                  if (st === 'Temiz') badgeColor = "bg-emerald-50 text-emerald-700 border-emerald-200";
+                  if (st === 'Bakım') badgeColor = "bg-sky-50 text-sky-700 border-sky-200";
+                  if (st === 'Arızalı') badgeColor = "bg-rose-100 text-rose-700 border-rose-300 animate-pulse";
 
-                return (
-                  <div key={room} className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-2xl flex flex-col justify-between hover:border-purple-500/30 transition-all">
-                    <div className="flex justify-between items-start mb-4 border-b border-slate-800/60 pb-3">
-                      <div>
-                        <h4 className="text-2xl font-black text-slate-100 mb-1">Oda {room}</h4>
-                        <span className={`inline-block px-3 py-1 rounded-full text-[10px] font-black uppercase border ${badgeColor}`}>
-                          {st === 'Temiz' && '✨ Temiz (Girildi)'}
-                          {st === 'Kirli' && '🔴 Kirli (Girilmedi)'}
-                          {st === 'Bakım' && '🛠️ Bakım Yapıldı'}
-                          {st === 'Arızalı' && '🚫 Arızalı (Kapalı)'}
-                        </span>
+                  return (
+                    <div key={room} className="bg-white border border-slate-100 rounded-3xl p-6 shadow-lg shadow-slate-200/40 hover:-translate-y-1 transition-transform flex flex-col justify-between">
+                      <div className="flex justify-between items-start mb-5 border-b border-slate-50 pb-4">
+                        <div>
+                          <h4 className="text-2xl font-black text-slate-800 mb-2">Oda {room}</h4>
+                          <span className={`inline-block px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase border ${badgeColor}`}>
+                            {st === 'Temiz' && '✨ Temiz (Girildi)'}
+                            {st === 'Kirli' && '🔴 Kirli (Girilmedi)'}
+                            {st === 'Bakım' && '🛠️ Bakım Yapıldı'}
+                            {st === 'Arızalı' && '🚫 Arızalı (Kapalı)'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 mb-4">
+                        <button onClick={() => handleUpdateHK(room, 'Temiz', roomHk.note)} className={`py-2.5 rounded-xl text-[10px] font-bold transition-all ${st === 'Temiz' ? 'bg-emerald-500 text-white shadow-md' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>TEMİZLE</button>
+                        <button onClick={() => handleUpdateHK(room, 'Kirli', roomHk.note)} className={`py-2.5 rounded-xl text-[10px] font-bold transition-all ${st === 'Kirli' ? 'bg-rose-500 text-white shadow-md' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>KİRLİ / GİRİLMEDİ</button>
+                        <button onClick={() => handleUpdateHK(room, 'Bakım', roomHk.note)} className={`py-2.5 rounded-xl text-[10px] font-bold transition-all ${st === 'Bakım' ? 'bg-sky-500 text-white shadow-md' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>BAKIM YAPILDI</button>
+                        <button onClick={() => handleUpdateHK(room, 'Arızalı', roomHk.note)} className={`py-2.5 rounded-xl text-[10px] font-bold transition-all ${st === 'Arızalı' ? 'bg-rose-600 text-white shadow-md' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>ARIZALI / KAPALI</button>
+                      </div>
+
+                      <div className="mt-auto bg-slate-50 p-2 rounded-xl border border-slate-100 flex items-center focus-within:border-indigo-300 transition-colors">
+                        <span className="text-xs px-2">📝</span>
+                        <input 
+                          type="text" 
+                          defaultValue={roomHk.note} 
+                          onBlur={(e) => { if(e.target.value !== roomHk.note) handleUpdateHK(room, st, e.target.value); }}
+                          placeholder="HK Notu Ekle..." 
+                          className="w-full bg-transparent text-xs text-slate-700 font-medium outline-none" 
+                        />
                       </div>
                     </div>
-
-                    <div className="grid grid-cols-2 gap-2 mb-3">
-                      <button onClick={() => handleUpdateHK(room, 'Temiz', roomHk.note)} className={`py-2 rounded-xl text-[10px] font-black transition-all ${st === 'Temiz' ? 'bg-emerald-500 text-slate-900' : 'bg-slate-950 text-slate-400 hover:bg-slate-800'}`}>TEMİZLE</button>
-                      <button onClick={() => handleUpdateHK(room, 'Kirli', roomHk.note)} className={`py-2 rounded-xl text-[10px] font-black transition-all ${st === 'Kirli' ? 'bg-rose-500 text-white' : 'bg-slate-950 text-slate-400 hover:bg-slate-800'}`}>KİRLİ / GİRİLMEDİ</button>
-                      <button onClick={() => handleUpdateHK(room, 'Bakım', roomHk.note)} className={`py-2 rounded-xl text-[10px] font-black transition-all ${st === 'Bakım' ? 'bg-sky-500 text-slate-900' : 'bg-slate-950 text-slate-400 hover:bg-slate-800'}`}>BAKIM YAPILDI</button>
-                      <button onClick={() => handleUpdateHK(room, 'Arızalı', roomHk.note)} className={`py-2 rounded-xl text-[10px] font-black transition-all ${st === 'Arızalı' ? 'bg-red-600 text-white' : 'bg-slate-950 text-slate-400 hover:bg-slate-800'}`}>ARIZALI / KAPALI</button>
-                    </div>
-
-                    <div className="mt-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800 flex items-center">
-                      <span className="text-xs px-2 text-slate-500">📝</span>
-                      <input 
-                        type="text" 
-                        defaultValue={roomHk.note} 
-                        onBlur={(e) => {
-                          if(e.target.value !== roomHk.note) handleUpdateHK(room, st, e.target.value);
-                        }}
-                        placeholder="HK Notu (Havlu değişti vb.)" 
-                        className="w-full bg-transparent text-xs text-slate-300 outline-none" 
-                      />
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
 
       </div>
 
-      {/* REZERVASYON MODALI */}
+      {/* REZERVASYON MODALI (LIGHT THEME) */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex justify-center items-center p-4 z-50">
-          <div className="bg-slate-900 border border-amber-500/40 w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh]">
-            <div className="bg-slate-950 p-5 border-b border-slate-800 flex justify-between items-center shrink-0">
-              <h2 className="text-lg font-black text-amber-400 tracking-wide">ODA #{formData.roomNo} <span className="text-slate-400 font-normal">| {formData.guestName || 'Yeni Rezervasyon'}</span></h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-500 hover:text-amber-400 transition-colors text-xl font-bold">✕</button>
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex justify-center items-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white border border-slate-100 w-full max-w-5xl rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[95vh] animate-in zoom-in-95 duration-300">
+            <div className="bg-slate-50 p-6 border-b border-slate-200 flex justify-between items-center shrink-0">
+              <h2 className="text-xl font-black text-indigo-700 tracking-tight">Oda #{formData.roomNo} <span className="text-slate-400 font-medium text-lg ml-2">| {formData.guestName || 'Yeni Kayıt'}</span></h2>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-rose-500 transition-colors text-2xl bg-white w-10 h-10 rounded-full flex items-center justify-center shadow-sm border border-slate-100">✕</button>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-6 bg-gradient-to-b from-slate-900 to-slate-950 flex flex-col md:flex-row gap-6 custom-scrollbar">
-              <div className="flex-1 space-y-4">
-                <h3 className="text-xs font-black text-emerald-400 border-b border-slate-800 pb-1 uppercase tracking-wider">Konaklama Bilgileri</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] text-slate-400 mb-1 font-bold">Misafir Adı</label>
-                    <input type="text" value={formData.guestName} onChange={e => setFormData({...formData, guestName: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-200 outline-none focus:border-amber-400" />
+            <div className="flex-1 overflow-y-auto p-8 bg-white flex flex-col md:flex-row gap-8 custom-scrollbar">
+              <div className="flex-1 space-y-6">
+                <div>
+                  <h3 className="text-sm font-black text-slate-800 border-b border-slate-100 pb-2 mb-4 uppercase tracking-wider">Konaklama Bilgileri</h3>
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="block text-[10px] text-slate-500 font-bold mb-1.5 uppercase">Misafir Adı</label>
+                      <input type="text" value={formData.guestName} onChange={e => setFormData({...formData, guestName: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm text-slate-800 font-bold outline-none focus:border-indigo-500 transition-all" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-indigo-600 font-bold mb-1.5 uppercase">Durum</label>
+                      <select value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})} className="w-full bg-indigo-50 border border-indigo-100 rounded-xl p-3.5 text-sm text-indigo-700 font-bold outline-none focus:border-indigo-500 transition-all">
+                        <option value="waiting">🟡 Bekleniyor</option>
+                        <option value="checked_in">🟢 İçeride (In-House)</option>
+                        <option value="checked_out">🔴 Çıkış Yaptı</option>
+                      </select>
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-[10px] text-amber-400 mb-1 font-black">Durum</label>
-                    <select value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-200 outline-none focus:border-amber-400 font-bold">
-                      <option value="waiting">🟡 Bekliyor</option>
-                      <option value="checked_in">🟢 Otelde (In-House)</option>
-                      <option value="checked_out">🔴 Çıkış Yaptı</option>
-                    </select>
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="block text-[10px] text-slate-500 font-bold mb-1.5 uppercase">Giriş Tarihi</label>
+                      <input type="date" value={formData.checkIn} onChange={e => setFormData({...formData, checkIn: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm text-slate-800 font-medium outline-none focus:border-indigo-500" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-500 font-bold mb-1.5 uppercase">Çıkış Tarihi</label>
+                      <input type="date" value={formData.checkOut} onChange={e => setFormData({...formData, checkOut: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm text-slate-800 font-medium outline-none focus:border-indigo-500" />
+                    </div>
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] text-slate-400 mb-1 font-bold">Giriş Tarihi</label>
-                    <input type="date" value={formData.checkIn} onChange={e => setFormData({...formData, checkIn: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-200 outline-none" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] text-slate-400 mb-1 font-bold">Çıkış Tarihi</label>
-                    <input type="date" value={formData.checkOut} onChange={e => setFormData({...formData, checkOut: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-200 outline-none" />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] text-slate-500 font-bold mb-1.5 uppercase">Telefon</label>
+                      <input type="text" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="05..." className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm text-slate-800 outline-none focus:border-indigo-500" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-500 font-bold mb-1.5 uppercase">Not</label>
+                      <input type="text" value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})} placeholder="Balayı vb." className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm text-slate-800 outline-none focus:border-indigo-500" />
+                    </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] text-slate-400 mb-1 font-bold">Telefon / İletişim</label>
-                    <input type="text" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="0532..." className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-200 outline-none" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] text-slate-400 mb-1 font-bold">Özel Not</label>
-                    <input type="text" value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})} placeholder="Örn: Balayı çifti" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-200 outline-none" />
-                  </div>
-                </div>
-
-                {/* İŞTE REZERVASYONA EKSTRA (CARİLİ) TUR EKLEME */}
-                <div className="pt-2 bg-slate-950/50 p-4 rounded-2xl border border-amber-500/20">
-                  <h3 className="text-xs font-black text-amber-400 border-b border-slate-800 pb-1 mb-3 uppercase tracking-wider">🎈 Aktivite & Tur Satışı Ekle</h3>
-                  <div className="grid grid-cols-2 gap-2 mb-2">
-                    <select value={tourType} onChange={e=>setTourType(e.target.value)} className="bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 font-bold outline-none">
+                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 shadow-sm">
+                  <h3 className="text-xs font-black text-indigo-700 border-b border-slate-200 pb-2 mb-4 uppercase tracking-wider">Aktivite / Tur Ekle</h3>
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <select value={tourType} onChange={e=>setTourType(e.target.value)} className="bg-white border border-slate-200 rounded-xl p-3 text-xs text-slate-700 font-bold outline-none">
                       {activities.map(a => <option key={a} value={a}>{a}</option>)}
                     </select>
-
-                    <select value={tourSelectedCari} onChange={e=>setTourSelectedCari(e.target.value)} className="bg-slate-950 border border-amber-500/50 rounded-xl p-2.5 text-xs text-amber-400 font-bold outline-none">
-                      <option value="">-- Hangi Cari / Acente? --</option>
+                    <select value={tourSelectedCari} onChange={e=>setTourSelectedCari(e.target.value)} className="bg-white border border-slate-200 rounded-xl p-3 text-xs text-indigo-700 font-bold outline-none">
+                      <option value="">-- Acente / Cari Seç --</option>
                       {caris.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                   </div>
-
-                  <div className="flex gap-2 bg-slate-950 rounded-xl">
-                    <input type="number" value={tourPrice} onChange={e=>setTourPrice(e.target.value)} placeholder="Satış Tutarı" className="w-24 bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 text-center outline-none" />
-                    <select value={tourCurrency} onChange={e=>setTourCurrency(e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-amber-400 font-bold outline-none">
+                  <div className="flex gap-2">
+                    <input type="number" value={tourPrice} onChange={e=>setTourPrice(e.target.value)} placeholder="Tutar" className="w-24 bg-white border border-slate-200 rounded-xl p-3 text-sm text-slate-800 font-bold text-center outline-none" />
+                    <select value={tourCurrency} onChange={e=>setTourCurrency(e.target.value)} className="bg-white border border-slate-200 rounded-xl p-3 text-xs text-slate-700 font-bold outline-none">
                       <option value="TL">TL</option><option value="USD">USD</option><option value="EUR">EUR</option>
                     </select>
-                    <button onClick={handleAddTourToRez} className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black py-2.5 rounded-xl text-xs tracking-wider transition-colors">EKSTRA EKLE</button>
+                    <button onClick={handleAddTourToRez} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-xs uppercase shadow-md transition-all">EKLE</button>
                   </div>
                 </div>
 
-                <div className="pt-2">
-                  <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <div className="grid grid-cols-3 gap-3">
                     <div className="col-span-2">
-                      <label className="block text-[10px] text-slate-400 mb-1 font-bold">Oda Konaklama Ücreti</label>
-                      <input type="number" value={formData.balance} onChange={e => setFormData({...formData, balance: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200 outline-none" />
+                      <label className="block text-[10px] text-slate-500 font-bold mb-1.5 uppercase">Oda Konaklama Ücreti</label>
+                      <input type="number" value={formData.balance} onChange={e => setFormData({...formData, balance: e.target.value})} className="w-full bg-white border border-slate-200 shadow-inner rounded-xl p-3.5 text-lg font-black text-slate-800 outline-none focus:border-indigo-500" />
                     </div>
                     <div>
-                      <label className="block text-[10px] text-slate-400 mb-1 font-bold">Birim</label>
-                      <select value={formData.currency} onChange={e => setFormData({...formData, currency: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-sm text-amber-400 font-black outline-none">
+                      <label className="block text-[10px] text-slate-500 font-bold mb-1.5 uppercase">Ana Birim</label>
+                      <select value={formData.currency} onChange={e => setFormData({...formData, currency: e.target.value})} className="w-full bg-white border border-slate-200 shadow-inner rounded-xl p-3.5 text-lg font-black text-indigo-600 outline-none focus:border-indigo-500">
                         <option value="TL">TL</option><option value="USD">USD</option><option value="EUR">EUR</option>
                       </select>
                     </div>
@@ -922,63 +909,65 @@ export default function HotelTimelineVIP() {
                 </div>
               </div>
 
-              {/* SAĞ TARAF: HESAP VE KASAYA TAHSİLAT */}
-              <div className="w-full md:w-5/12 bg-slate-950 border border-slate-800 rounded-2xl p-5 flex flex-col">
-                <h3 className="text-xs font-black text-sky-400 border-b border-slate-800 pb-1 uppercase tracking-wider mb-3">Hesap Özeti & Kasa Tahsilatı</h3>
+              {/* SAĞ: HESAP & TAHSİLAT */}
+              <div className="w-full md:w-5/12 bg-slate-50 border border-slate-100 rounded-3xl p-6 flex flex-col shadow-inner">
+                <h3 className="text-sm font-black text-slate-800 border-b border-slate-200 pb-2 uppercase tracking-wider mb-4">Hesap & Ödemeler</h3>
+                
                 {(() => {
                   const { totalDebt, totalPaid, remaining } = getCalc(formData);
                   const cur = formData.currency || 'EUR';
                   return (
-                    <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800 mb-4 space-y-2 shadow-inner">
-                      <div className="flex justify-between text-xs text-slate-400"><span>Toplam Borç:</span><span className="font-bold text-slate-200">{totalDebt.toLocaleString()} {cur}</span></div>
-                      <div className="flex justify-between text-xs text-slate-400"><span>Alınan Ödemeler:</span><span className="font-bold text-emerald-400">{totalPaid.toLocaleString()} {cur}</span></div>
-                      <div className="border-t border-slate-800 pt-2 flex justify-between text-sm">
-                        <span className="font-black text-slate-200">Kalan Bakiye:</span>
-                        <span className={`font-black ${remaining > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>{remaining > 0 ? `${remaining.toLocaleString()} ${cur}` : `0 ${cur}`}</span>
+                    <div className="bg-white rounded-2xl p-5 border border-slate-200 mb-5 shadow-sm space-y-3">
+                      <div className="flex justify-between text-sm text-slate-500 font-medium"><span>Toplam (Oda+Tur):</span><span className="font-bold text-slate-800">{totalDebt.toLocaleString()} {cur}</span></div>
+                      <div className="flex justify-between text-sm text-slate-500 font-medium"><span>Alınan Ödemeler:</span><span className="font-bold text-emerald-600">{totalPaid.toLocaleString()} {cur}</span></div>
+                      <div className="border-t border-slate-100 pt-3 flex justify-between items-center">
+                        <span className="text-sm font-black text-slate-800 uppercase">Kalan Bakiye:</span>
+                        <span className={`text-xl font-black ${remaining > 0 ? 'text-rose-600' : 'text-emerald-500'}`}>{remaining > 0 ? `${remaining.toLocaleString()} ${cur}` : `0 ${cur}`}</span>
                       </div>
                     </div>
                   );
                 })()}
 
-                <div className="flex-1 overflow-y-auto space-y-1.5 mb-4 pr-1 max-h-32 custom-scrollbar">
-                  <h4 className="text-[10px] text-slate-500 font-bold uppercase">Satılan Ekstralar & Turlar</h4>
+                <div className="flex-1 overflow-y-auto space-y-2 mb-5 pr-2 max-h-40 custom-scrollbar">
+                  <h4 className="text-[10px] text-slate-400 font-bold uppercase mb-2">Satılan Ekstralar</h4>
                   {formData.debts.map(d => (
-                    <div key={d.id} className="flex justify-between bg-slate-900 p-2.5 rounded-xl text-xs border border-slate-800">
-                      <span className="text-slate-300 font-medium">{d.title}</span>
-                      <div><span className="text-amber-400 font-bold mr-2">{d.amount} {d.currency}</span><button onClick={()=>handleDeleteDebt(d.id)} className="text-rose-400 font-bold px-1 hover:text-rose-300">X</button></div>
+                    <div key={d.id} className="flex justify-between items-center bg-white p-3 rounded-xl text-xs border border-slate-100 shadow-sm">
+                      <span className="text-slate-700 font-semibold">{d.title}</span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-slate-800 font-black">{d.amount} {d.currency}</span>
+                        <button onClick={()=>handleDeleteDebt(d.id)} className="text-rose-400 hover:text-rose-600 font-black px-1">✕</button>
+                      </div>
                     </div>
                   ))}
                 </div>
 
-                {/* TAHSİLAT KASAYA İŞLENSİN */}
-                <div className="border-t border-slate-800 pt-3">
-                  <h4 className="text-[10px] text-emerald-400 font-black uppercase mb-2">Kasaya Yeni Tahsilat Ekle</h4>
-                  <div className="space-y-2">
-                    <select value={payCategory} onChange={e=>setPayCategory(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 outline-none font-bold">
+                <div className="border-t border-slate-200 pt-4 mt-auto">
+                  <h4 className="text-xs font-black text-emerald-600 uppercase mb-3">Kasaya Tahsilat Al</h4>
+                  <div className="space-y-3">
+                    <select value={payCategory} onChange={e=>setPayCategory(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs text-slate-700 font-bold outline-none">
                       {activities.map(a => <option key={a} value={a}>{a} Tahsilatı</option>)}
                     </select>
-                    
                     <div className="flex gap-2">
-                      <input type="number" value={payAmount} onChange={e=>setPayAmount(e.target.value)} placeholder="Tutar" className="w-1/2 bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 outline-none" />
-                      <select value={payCurrency} onChange={e=>setPayCurrency(e.target.value)} className="w-1/4 bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-amber-400 font-bold outline-none">
+                      <input type="number" value={payAmount} onChange={e=>setPayAmount(e.target.value)} placeholder="Tutar" className="w-1/2 bg-white border border-slate-200 rounded-xl p-3 text-sm text-slate-800 font-bold outline-none" />
+                      <select value={payCurrency} onChange={e=>setPayCurrency(e.target.value)} className="w-1/4 bg-white border border-slate-200 rounded-xl p-3 text-xs text-slate-700 font-bold outline-none">
                         <option value="TL">TL</option><option value="USD">USD</option><option value="EUR">EUR</option>
                       </select>
-                      <select value={payMethod} onChange={e=>setPayMethod(e.target.value)} className="w-1/4 bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 outline-none">
+                      <select value={payMethod} onChange={e=>setPayMethod(e.target.value)} className="w-1/4 bg-white border border-slate-200 rounded-xl p-3 text-xs text-slate-700 font-medium outline-none">
                         <option value="cash">Nakit</option><option value="cc">POS</option>
                       </select>
                     </div>
-                    <input type="text" value={payNote} onChange={e=>setPayNote(e.target.value)} placeholder="Açıklama (Örn: Peşinat)" className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 outline-none" />
-                    <button onClick={handleReceivePayment} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 rounded-xl shadow-lg transition-all text-xs uppercase tracking-wider">TAHSİLAT AL & ANA KASAYA İŞLE</button>
+                    <input type="text" value={payNote} onChange={e=>setPayNote(e.target.value)} placeholder="Açıklama (Örn: Peşinat)" className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm text-slate-700 outline-none" />
+                    <button onClick={handleReceivePayment} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3.5 rounded-xl shadow-md transition-colors text-xs uppercase tracking-widest">Tahsilat Al & Kasaya İşle</button>
                   </div>
                 </div>
               </div>
             </div>
             
-            <div className="bg-slate-950 p-4 border-t border-slate-800 flex justify-between items-center shrink-0">
-              {selectedRez ? <button onClick={handleDeleteRez} className="text-rose-400 hover:text-rose-300 text-xs font-bold px-4 py-2.5 rounded-xl uppercase bg-rose-500/10 transition-colors">Rezervasyonu Sil</button> : <div></div>}
+            <div className="bg-slate-50 p-6 border-t border-slate-200 flex justify-between items-center shrink-0">
+              {selectedRez ? <button onClick={handleDeleteRez} className="text-rose-600 hover:bg-rose-100 text-xs font-bold px-5 py-3 rounded-xl uppercase transition-colors">Kaydı Sil</button> : <div></div>}
               <div className="flex gap-3">
-                <button onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 rounded-xl text-xs font-bold text-slate-400 hover:bg-slate-800 transition-colors">İPTAL</button>
-                <button onClick={handleSaveRez} className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black px-7 py-2.5 rounded-xl shadow-lg shadow-amber-500/20 uppercase text-xs tracking-wider transition-all">KAYDET</button>
+                <button onClick={() => setIsModalOpen(false)} className="px-6 py-3 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-200 transition-colors">İPTAL</button>
+                <button onClick={handleSaveRez} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-10 py-3 rounded-xl shadow-lg shadow-indigo-200 uppercase text-xs tracking-widest transition-all">KAYDET</button>
               </div>
             </div>
           </div>
@@ -986,12 +975,14 @@ export default function HotelTimelineVIP() {
       )}
       
       {tooltip.visible && tooltip.rez && (
-        <div className="fixed z-[99999] pointer-events-none bg-slate-950/95 backdrop-blur-md border border-amber-500/50 rounded-2xl p-3 shadow-2xl w-52" style={{ left: tooltip.x + 15, top: tooltip.y + 15 }}>
-          <div className="text-amber-400 font-black text-sm border-b border-slate-800 pb-1">{tooltip.rez.guestName}</div>
-          <div className="text-[10px] space-y-1 mt-2 text-slate-300">
-            <p><span className="text-slate-500">Giriş:</span> {tooltip.rez.checkIn}</p>
-            <p><span className="text-slate-500">Çıkış:</span> {tooltip.rez.checkOut}</p>
-            <p className={`font-black mt-1 pt-1 border-t border-slate-800 ${getCalc(tooltip.rez).remaining > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>Bakiye: {getCalc(tooltip.rez).remaining} {getCalc(tooltip.rez).currency}</p>
+        <div className="fixed z-[99999] pointer-events-none bg-white/95 backdrop-blur-md border border-slate-200 rounded-2xl p-4 shadow-2xl w-56" style={{ left: tooltip.x + 15, top: tooltip.y + 15 }}>
+          <div className="text-slate-800 font-black text-sm border-b border-slate-100 pb-2 mb-2">{tooltip.rez.guestName}</div>
+          <div className="text-[11px] space-y-1.5 text-slate-600 font-medium">
+            <p>Giriş: <strong className="text-slate-800">{tooltip.rez.checkIn}</strong></p>
+            <p>Çıkış: <strong className="text-slate-800">{tooltip.rez.checkOut}</strong></p>
+            <div className="mt-2 pt-2 border-t border-slate-100">
+              <span className={`font-black ${getCalc(tooltip.rez).remaining > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>Bakiye: {getCalc(tooltip.rez).remaining} {getCalc(tooltip.rez).currency}</span>
+            </div>
           </div>
         </div>
       )}
