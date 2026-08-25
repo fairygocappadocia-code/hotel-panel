@@ -1,27 +1,30 @@
 // @ts-nocheck
 "use client";
 import { useState, useEffect, useRef } from "react";
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc } from "firebase/firestore";
+
+// --- SENİN FIREBASE ŞİFRELERİN ---
+const firebaseConfig = {
+  apiKey: "AIzaSyBkAafEYmhC_UCIK6nK19zGn1pEy45mtVA",
+  authDomain: "doors-panel.firebaseapp.com",
+  projectId: "doors-panel",
+  storageBucket: "doors-panel.firebasestorage.app",
+  messagingSenderId: "717146829376",
+  appId: "1:717146829376:web:1b05588aa972d56e0865a5",
+  measurementId: "G-N98E7SFG26"
+};
+
+// FIREBASE BAŞLATMA
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+const db = getFirestore(app);
 
 export default function HotelTimelineVIP() {
   // --- STATELER ---
   const [activeTab, setActiveTab] = useState("timeline"); 
-
-  const [reservations, setReservations] = useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("doorsofcappadocia_rez");
-      if (saved) return JSON.parse(saved);
-    }
-    return [];
-  });
-
-  const [transactions, setTransactions] = useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("doorsofcappadocia_kasa");
-      if (saved) return JSON.parse(saved);
-    }
-    return []; 
-  });
-
+  const [reservations, setReservations] = useState([]);
+  const [transactions, setTransactions] = useState([]);
+  
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedRez, setSelectedRez] = useState(null);
   const [formData, setFormData] = useState({
@@ -57,17 +60,28 @@ export default function HotelTimelineVIP() {
     return { dateStr, dayNum, dayName };
   });
 
-  // --- EFFECTLER ---
+  // --- BULUT VERİTABANI BAĞLANTISI (ANLIK SENKRONİZASYON) ---
+  useEffect(() => {
+    // Rezervasyonları Çek
+    const unsubRez = onSnapshot(collection(db, "reservations"), (snapshot) => {
+      const rezData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+      setReservations(rezData);
+    });
+    // Kasa İşlemlerini Çek
+    const unsubKasa = onSnapshot(collection(db, "transactions"), (snapshot) => {
+      const kasaData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+      // Tarihe göre sırala (en yeni en üstte)
+      setTransactions(kasaData.sort((a,b) => b.id - a.id));
+    });
+
+    return () => { unsubRez(); unsubKasa(); };
+  }, []);
+
   useEffect(() => {
     if (activeTab === "timeline" && scrollContainerRef.current) {
       setTimeout(() => handleJumpToDate(jumpDate), 100);
     }
   }, [activeTab]);
-
-  useEffect(() => {
-    localStorage.setItem("doorsofcappadocia_rez", JSON.stringify(reservations));
-    localStorage.setItem("doorsofcappadocia_kasa", JSON.stringify(transactions));
-  }, [reservations, transactions]);
 
   const handleJumpToDate = (targetDate) => {
     setJumpDate(targetDate);
@@ -79,7 +93,7 @@ export default function HotelTimelineVIP() {
     }
   };
 
-  // --- REZERVASYON İŞLEMLERİ ---
+  // --- REZERVASYON İŞLEMLERİ (BULUT) ---
   const handleOpenNewModal = (roomNo, dateStr) => {
     const d = new Date(dateStr); d.setDate(d.getDate() + 1);
     const checkOutStr = [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
@@ -93,27 +107,27 @@ export default function HotelTimelineVIP() {
     setSelectedRez(rez); setIsModalOpen(true);
   };
 
-  const handleSaveRez = () => {
+  const handleSaveRez = async () => {
     if (!formData.guestName || !formData.checkOut) return alert("Lütfen isim ve çıkış tarihi girin.");
-    if (selectedRez) {
-      setReservations(reservations.map(r => r.id === selectedRez.id ? { ...formData, id: selectedRez.id } : r));
-    } else {
-      setReservations([...reservations, { ...formData, id: Date.now() }]);
-    }
+    const rezId = selectedRez ? selectedRez.id : Date.now().toString();
+    const payload = { ...formData, id: rezId };
+    
+    // Veriyi buluta yazdır
+    await setDoc(doc(db, "reservations", rezId), payload);
     setIsModalOpen(false);
   };
 
-  const handleDeleteRez = () => {
+  const handleDeleteRez = async () => {
     if (confirm("Bu rezervasyonu silmek istediğinize emin misiniz?")) {
-      setReservations(reservations.filter(r => r.id !== selectedRez.id));
+      await deleteDoc(doc(db, "reservations", selectedRez.id.toString()));
       setIsModalOpen(false);
     }
   };
 
-  // --- BORÇ VE TAHSİLAT (ÖDEME) İŞLEMLERİ ---
+  // --- BORÇ VE TAHSİLAT İŞLEMLERİ ---
   const handleAddDebt = () => {
     if (!newDebtTitle || !newDebtAmount) return;
-    setFormData({ ...formData, debts: [...formData.debts, { id: Date.now(), title: newDebtTitle, amount: parseFloat(newDebtAmount) }] });
+    setFormData({ ...formData, debts: [...formData.debts, { id: Date.now().toString(), title: newDebtTitle, amount: parseFloat(newDebtAmount) }] });
     setNewDebtTitle(""); setNewDebtAmount("");
   };
 
@@ -121,29 +135,39 @@ export default function HotelTimelineVIP() {
     setFormData({ ...formData, debts: formData.debts.filter(d => d.id !== debtId) });
   };
 
-  const handleReceivePayment = () => {
+  const handleReceivePayment = async () => {
     if (!payAmount) return;
     const amountNum = parseFloat(payAmount);
+    const payId = Date.now().toString();
     
-    const newPayment = { id: Date.now(), amount: amountNum, method: payMethod, note: payNote, date: todayStr };
-    setFormData({ ...formData, payments: [...(formData.payments || []), newPayment] });
+    const newPayment = { id: payId, amount: amountNum, method: payMethod, note: payNote, date: todayStr };
+    const updatedRez = { ...formData, payments: [...(formData.payments || []), newPayment] };
     
+    // Ekranda anlık güncelle
+    setFormData(updatedRez);
+    
+    // 1. Rezervasyonun içine ödemeyi kaydet
+    await setDoc(doc(db, "reservations", updatedRez.id.toString()), updatedRez);
+    
+    // 2. Kasa paneline gelir olarak kaydet
+    const newTxId = (Date.now() + 1).toString();
     const newTransaction = {
-      id: Date.now(), date: todayStr, type: 'income', amount: amountNum, method: payMethod,
+      id: newTxId, date: todayStr, type: 'income', amount: amountNum, method: payMethod,
       desc: `Tahsilat (Oda ${formData.roomNo} - ${formData.guestName}) ${payNote ? '- '+payNote : ''}`
     };
-    setTransactions([...transactions, newTransaction]);
+    await setDoc(doc(db, "transactions", newTxId), newTransaction);
     
     setPayAmount(""); setPayNote("");
   };
 
   // --- KASA (MANUEL) İŞLEMLERİ ---
-  const handleAddManualTransaction = () => {
+  const handleAddManualTransaction = async () => {
     if(!kasaAmount || !kasaDesc) return alert("Tutar ve açıklama zorunludur.");
+    const newTxId = Date.now().toString();
     const newTx = {
-      id: Date.now(), date: todayStr, type: kasaType, amount: parseFloat(kasaAmount), method: kasaMethod, desc: kasaDesc
+      id: newTxId, date: todayStr, type: kasaType, amount: parseFloat(kasaAmount), method: kasaMethod, desc: kasaDesc
     };
-    setTransactions([newTx, ...transactions]);
+    await setDoc(doc(db, "transactions", newTxId), newTx);
     setKasaAmount(""); setKasaDesc("");
   };
 
@@ -211,13 +235,10 @@ export default function HotelTimelineVIP() {
   return (
     <div className="flex h-screen w-screen bg-[#0B1120] text-slate-100 font-sans overflow-hidden">
       
-      {/* SOL MENÜ (SIDEBAR) - LOGOLU */}
+      {/* SOL MENÜ */}
       <aside className="w-16 md:w-56 bg-slate-950 border-r border-amber-500/20 flex flex-col shadow-2xl z-40 transition-all">
-        {/* LOGO BÖLÜMÜ */}
         <div className="h-20 flex items-center justify-center md:justify-start md:px-4 border-b border-slate-800 bg-slate-900/30">
-          {/* Projedeki public klasöründeki logo.png dosyasını çeker */}
-          <img src="/logo.png" alt="Doors of Cappadocia Logo" className="w-10 h-10 md:w-12 md:h-12 object-contain drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]" />
-          
+          <img src="/logo.png" alt="Logo" className="w-10 h-10 md:w-12 md:h-12 object-contain drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]" />
           <div className="hidden md:flex flex-col ml-3">
              <span className="font-black text-amber-500 tracking-widest text-xs leading-tight">DOORS OF</span>
              <span className="font-bold text-slate-300 tracking-widest text-[10px] leading-tight">CAPPADOCIA</span>
@@ -226,26 +247,21 @@ export default function HotelTimelineVIP() {
 
         <nav className="flex-1 py-6 space-y-2 px-2 md:px-3">
           <button onClick={() => setActiveTab("timeline")} className={`w-full flex items-center justify-center md:justify-start px-2 md:px-4 py-3 rounded-xl transition-all ${activeTab === 'timeline' ? 'bg-amber-500 text-slate-900 font-bold shadow-lg shadow-amber-500/20' : 'text-slate-400 hover:bg-slate-900 hover:text-amber-500'}`}>
-            <span className="text-xl">📅</span>
-            <span className="hidden md:block ml-3 text-sm">Takvim (PMS)</span>
+            <span className="text-xl">📅</span><span className="hidden md:block ml-3 text-sm">Takvim (PMS)</span>
           </button>
           <button onClick={() => setActiveTab("kasa")} className={`w-full flex items-center justify-center md:justify-start px-2 md:px-4 py-3 rounded-xl transition-all ${activeTab === 'kasa' ? 'bg-emerald-500 text-slate-900 font-bold shadow-lg shadow-emerald-500/20' : 'text-slate-400 hover:bg-slate-900 hover:text-emerald-500'}`}>
-            <span className="text-xl">💰</span>
-            <span className="hidden md:block ml-3 text-sm">Kasa & Muhasebe</span>
+            <span className="text-xl">💰</span><span className="hidden md:block ml-3 text-sm">Kasa & Muhasebe</span>
           </button>
         </nav>
       </aside>
 
       {/* ANA İÇERİK ALANI */}
       <div className="flex-1 flex flex-col overflow-hidden relative">
-        
-        {/* HEADER */}
         <header className="h-16 bg-slate-900/80 backdrop-blur-md border-b border-amber-500/20 px-4 flex justify-between items-center z-20 shrink-0">
           <h2 className="text-lg font-bold text-slate-200 hidden md:block">
             {activeTab === 'timeline' ? 'Oda ve Rezervasyon Yönetimi' : 'Otel Kasa ve Finans Yönetimi'}
           </h2>
           <h2 className="text-sm font-bold text-amber-500 block md:hidden">DOORS OF CAPPADOCIA</h2>
-          
           {activeTab === 'timeline' && (
              <div className="flex items-center gap-2 bg-slate-950 border border-slate-700/50 rounded-lg p-1.5 shadow-inner">
                <button onClick={() => handleJumpToDate(todayStr)} className="text-[10px] font-bold text-slate-300 hover:text-slate-950 hover:bg-amber-500 px-3 py-1 bg-slate-800 rounded transition-all tracking-wider">BUGÜN</button>
@@ -254,16 +270,13 @@ export default function HotelTimelineVIP() {
           )}
         </header>
 
-        {/* EKRAN 1: TAKVİM (GANTT) */}
         {activeTab === "timeline" && (
           <div className="flex-1 flex flex-col overflow-hidden">
             <div ref={scrollContainerRef} className="flex-1 overflow-auto bg-[#0B1120] relative custom-scrollbar">
               <table className="w-full text-left border-collapse table-fixed select-none">
                 <thead className="bg-slate-900 text-slate-400">
                   <tr>
-                    <th className="sticky left-0 top-0 bg-slate-950 z-30 w-16 border-r border-b border-amber-500/20 text-center shadow-[4px_0_15px_-3px_rgba(0,0,0,0.5)]">
-                      <span className="text-[10px] font-bold tracking-widest text-amber-500">ODA</span>
-                    </th>
+                    <th className="sticky left-0 top-0 bg-slate-950 z-30 w-16 border-r border-b border-amber-500/20 text-center shadow-[4px_0_15px_-3px_rgba(0,0,0,0.5)]"><span className="text-[10px] font-bold tracking-widest text-amber-500">ODA</span></th>
                     {days.map(dayObj => (
                       <th key={dayObj.dateStr} id={"col-" + dayObj.dateStr} className={`w-[45px] sticky top-0 bg-slate-900/95 z-20 border-r border-b border-slate-700/50 text-center py-1 ${dayObj.dateStr === todayStr ? 'bg-amber-500/10 border-b-amber-500' : ''}`}>
                         <div className={`text-[12px] font-bold ${dayObj.dateStr === todayStr ? 'text-amber-500' : 'text-slate-200'}`}>{dayObj.dayNum}</div>
@@ -283,7 +296,6 @@ export default function HotelTimelineVIP() {
               </table>
             </div>
 
-            {/* TAKVİM ALT PANELİ */}
             <footer className="shrink-0 h-36 bg-slate-950 border-t border-amber-500/20 p-3 flex gap-4 shadow-[0_-10px_20px_rgba(0,0,0,0.3)] z-20">
               <div className="flex-1 bg-slate-900 border border-slate-800 rounded-lg p-3 flex flex-col">
                 <h3 className="text-xs font-bold text-emerald-400 border-b border-slate-800 pb-2 mb-2 flex justify-between items-center">
@@ -325,7 +337,6 @@ export default function HotelTimelineVIP() {
           </div>
         )}
 
-        {/* EKRAN 2: KASA YÖNETİMİ */}
         {activeTab === "kasa" && (
           <div className="flex-1 flex flex-col p-4 md:p-8 overflow-y-auto bg-gradient-to-b from-slate-900 to-[#0B1120]">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -358,8 +369,7 @@ export default function HotelTimelineVIP() {
                   <div>
                     <label className="block text-[10px] text-slate-400 mb-1 uppercase">Ödeme Yöntemi</label>
                     <select value={kasaMethod} onChange={e=>setKasaMethod(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-slate-200 outline-none focus:border-amber-500">
-                      <option value="cash">Nakit</option>
-                      <option value="cc">Kredi Kartı</option>
+                      <option value="cash">Nakit</option><option value="cc">Kredi Kartı</option>
                     </select>
                   </div>
                   <div>
@@ -379,12 +389,7 @@ export default function HotelTimelineVIP() {
                 <div className="flex-1 overflow-auto max-h-[500px] pr-2 custom-scrollbar">
                   <table className="w-full text-left text-sm">
                     <thead className="text-xs text-slate-400 bg-slate-900 sticky top-0 z-10">
-                      <tr>
-                        <th className="p-3 rounded-tl-lg">Tarih</th>
-                        <th className="p-3">Açıklama</th>
-                        <th className="p-3">Yöntem</th>
-                        <th className="p-3 text-right rounded-tr-lg">Tutar</th>
-                      </tr>
+                      <tr><th className="p-3 rounded-tl-lg">Tarih</th><th className="p-3">Açıklama</th><th className="p-3">Yöntem</th><th className="p-3 text-right rounded-tr-lg">Tutar</th></tr>
                     </thead>
                     <tbody>
                       {transactions.length === 0 ? <tr><td colSpan="4" className="text-center p-4 text-slate-500 italic">Henüz işlem yok.</td></tr> :
@@ -393,9 +398,7 @@ export default function HotelTimelineVIP() {
                             <td className="p-3 text-xs text-slate-400">{tx.date}</td>
                             <td className="p-3 font-medium text-slate-300">{tx.desc}</td>
                             <td className="p-3 text-xs"><span className={`px-2 py-1 rounded-md bg-slate-900 border ${tx.method === 'cash' ? 'border-amber-500/30 text-amber-400' : 'border-sky-500/30 text-sky-400'}`}>{tx.method === 'cash' ? 'Nakit' : 'K.Kartı'}</span></td>
-                            <td className={`p-3 text-right font-bold ${tx.type === 'income' ? 'text-emerald-400' : 'text-rose-400'}`}>
-                              {tx.type === 'income' ? '+' : '-'}{tx.amount.toLocaleString()} TL
-                            </td>
+                            <td className={`p-3 text-right font-bold ${tx.type === 'income' ? 'text-emerald-400' : 'text-rose-400'}`}>{tx.type === 'income' ? '+' : '-'}{tx.amount.toLocaleString()} TL</td>
                           </tr>
                         ))
                       }
@@ -409,7 +412,6 @@ export default function HotelTimelineVIP() {
 
       </div>
 
-      {/* REZERVASYON MODALI (TAHSİLAT EKLENTİLİ) */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex justify-center items-center p-4 z-50">
           <div className="bg-slate-900 border border-amber-500/30 w-full max-w-3xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh]">
@@ -419,7 +421,6 @@ export default function HotelTimelineVIP() {
             </div>
             
             <div className="flex-1 overflow-y-auto p-5 bg-gradient-to-b from-slate-900 to-slate-950 flex flex-col md:flex-row gap-6">
-              
               <div className="flex-1 space-y-4">
                 <h3 className="text-xs font-bold text-emerald-500 border-b border-slate-800 pb-1 uppercase tracking-wider">Konaklama Detayları</h3>
                 <div className="grid grid-cols-2 gap-4">
@@ -475,7 +476,6 @@ export default function HotelTimelineVIP() {
 
               <div className="w-full md:w-5/12 bg-slate-950 border border-slate-800 rounded-xl p-4 flex flex-col">
                 <h3 className="text-xs font-bold text-sky-400 border-b border-slate-800 pb-1 uppercase tracking-wider mb-3">Hesap & Tahsilat</h3>
-                
                 {(() => {
                   const { totalDebt, totalPaid, remaining } = getCalc(formData);
                   return (
@@ -495,10 +495,7 @@ export default function HotelTimelineVIP() {
                   {(formData.payments || []).length === 0 ? <p className="text-xs text-slate-600 italic">Henüz ödeme alınmadı.</p> : 
                     formData.payments.map(pay => (
                       <div key={pay.id} className="bg-emerald-500/10 border border-emerald-500/20 p-2 rounded text-xs flex justify-between items-center">
-                        <div>
-                          <span className="text-emerald-400 font-bold mr-2">+{pay.amount} TL</span>
-                          <span className="text-slate-400 text-[10px]">{pay.method==='cash'?'Nakit':'POS'} {pay.note ? `(${pay.note})`:''}</span>
-                        </div>
+                        <div><span className="text-emerald-400 font-bold mr-2">+{pay.amount} TL</span><span className="text-slate-400 text-[10px]">{pay.method==='cash'?'Nakit':'POS'} {pay.note ? `(${pay.note})`:''}</span></div>
                       </div>
                     ))
                   }
@@ -513,7 +510,7 @@ export default function HotelTimelineVIP() {
                         <option value="cash">Nakit</option><option value="cc">Kredi Kartı</option>
                       </select>
                     </div>
-                    <input type="text" value={payNote} onChange={e=>setPayNote(e.target.value)} placeholder="Açıklama (Örn: Balon ödemesi)" className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-slate-200 outline-none focus:border-amber-500" />
+                    <input type="text" value={payNote} onChange={e=>setPayNote(e.target.value)} placeholder="Açıklama" className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-slate-200 outline-none focus:border-amber-500" />
                     <button onClick={handleReceivePayment} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded shadow-lg transition-colors text-xs uppercase tracking-wider">Tahsilat Al & Kasaya İşle</button>
                   </div>
                 </div>
@@ -531,7 +528,6 @@ export default function HotelTimelineVIP() {
         </div>
       )}
       
-      {/* TOOLTIP */}
       {tooltip.visible && tooltip.rez && (
         <div className="fixed z-[99999] pointer-events-none bg-slate-900/95 backdrop-blur-md border border-amber-500/50 rounded-xl p-3 shadow-2xl w-48" style={{ left: tooltip.x + 15, top: tooltip.y + 15 }}>
           <div className="text-amber-400 font-bold text-sm border-b border-slate-700 pb-1">{tooltip.rez.guestName}</div>
