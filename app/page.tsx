@@ -20,6 +20,38 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
 
 export default function HotelTimelineVIP() {
+  // --- GİRİŞ KONTROLÜ STATE'LERİ ---
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [usernameInput, setUsernameInput] = useState("");
+  const [passwordInput, setPasswordInput] = useState("");
+  const [loginError, setLoginError] = useState("");
+
+  // Sayfa açıldığında daha önce giriş yapmış mı kontrol et
+  useEffect(() => {
+    const savedLogin = localStorage.getItem("doors_logged_in");
+    if (savedLogin === "true") {
+      setIsLoggedIn(true);
+    }
+  }, []);
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+    if (usernameInput === "doorsofcappadocia" && passwordInput === "Doors6162") {
+      setIsLoggedIn(true);
+      localStorage.setItem("doors_logged_in", "true");
+      setLoginError("");
+    } else {
+      setLoginError("Kullanıcı adı veya şifre hatalı!");
+    }
+  };
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    localStorage.removeItem("doors_logged_in");
+    setUsernameInput("");
+    setPasswordInput("");
+  };
+
   // --- STATELER ---
   const [activeTab, setActiveTab] = useState("timeline"); 
   const [reservations, setReservations] = useState([]);
@@ -60,28 +92,26 @@ export default function HotelTimelineVIP() {
     return { dateStr, dayNum, dayName };
   });
 
-  // --- BULUT VERİTABANI BAĞLANTISI (ANLIK SENKRONİZASYON) ---
+  // --- BULUT VERİTABANI BAĞLANTISI ---
   useEffect(() => {
-    // Rezervasyonları Çek
+    if (!isLoggedIn) return;
     const unsubRez = onSnapshot(collection(db, "reservations"), (snapshot) => {
       const rezData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
       setReservations(rezData);
     });
-    // Kasa İşlemlerini Çek
     const unsubKasa = onSnapshot(collection(db, "transactions"), (snapshot) => {
       const kasaData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-      // Tarihe göre sırala (en yeni en üstte)
       setTransactions(kasaData.sort((a,b) => b.id - a.id));
     });
 
     return () => { unsubRez(); unsubKasa(); };
-  }, []);
+  }, [isLoggedIn]);
 
   useEffect(() => {
     if (activeTab === "timeline" && scrollContainerRef.current) {
       setTimeout(() => handleJumpToDate(jumpDate), 100);
     }
-  }, [activeTab]);
+  }, [activeTab, isLoggedIn]);
 
   const handleJumpToDate = (targetDate) => {
     setJumpDate(targetDate);
@@ -93,7 +123,6 @@ export default function HotelTimelineVIP() {
     }
   };
 
-  // --- REZERVASYON İŞLEMLERİ (BULUT) ---
   const handleOpenNewModal = (roomNo, dateStr) => {
     const d = new Date(dateStr); d.setDate(d.getDate() + 1);
     const checkOutStr = [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
@@ -111,8 +140,6 @@ export default function HotelTimelineVIP() {
     if (!formData.guestName || !formData.checkOut) return alert("Lütfen isim ve çıkış tarihi girin.");
     const rezId = selectedRez ? selectedRez.id : Date.now().toString();
     const payload = { ...formData, id: rezId };
-    
-    // Veriyi buluta yazdır
     await setDoc(doc(db, "reservations", rezId), payload);
     setIsModalOpen(false);
   };
@@ -124,7 +151,6 @@ export default function HotelTimelineVIP() {
     }
   };
 
-  // --- BORÇ VE TAHSİLAT İŞLEMLERİ ---
   const handleAddDebt = () => {
     if (!newDebtTitle || !newDebtAmount) return;
     setFormData({ ...formData, debts: [...formData.debts, { id: Date.now().toString(), title: newDebtTitle, amount: parseFloat(newDebtAmount) }] });
@@ -143,13 +169,9 @@ export default function HotelTimelineVIP() {
     const newPayment = { id: payId, amount: amountNum, method: payMethod, note: payNote, date: todayStr };
     const updatedRez = { ...formData, payments: [...(formData.payments || []), newPayment] };
     
-    // Ekranda anlık güncelle
     setFormData(updatedRez);
-    
-    // 1. Rezervasyonun içine ödemeyi kaydet
     await setDoc(doc(db, "reservations", updatedRez.id.toString()), updatedRez);
     
-    // 2. Kasa paneline gelir olarak kaydet
     const newTxId = (Date.now() + 1).toString();
     const newTransaction = {
       id: newTxId, date: todayStr, type: 'income', amount: amountNum, method: payMethod,
@@ -160,7 +182,6 @@ export default function HotelTimelineVIP() {
     setPayAmount(""); setPayNote("");
   };
 
-  // --- KASA (MANUEL) İŞLEMLERİ ---
   const handleAddManualTransaction = async () => {
     if(!kasaAmount || !kasaDesc) return alert("Tutar ve açıklama zorunludur.");
     const newTxId = Date.now().toString();
@@ -232,13 +253,58 @@ export default function HotelTimelineVIP() {
   const checkOutsToday = reservations.filter(r => r.checkOut === todayStr);
   const totalExpectedCollection = checkOutsToday.reduce((tot, r) => tot + getCalc(r).remaining, 0);
 
+  // --- EĞER GİRİŞ YAPILMDIYSA GİRİŞ EKRANI GÖSTER ---
+  if (!isLoggedIn) {
+    return (
+      <div className="flex h-screen w-screen bg-[#0B1120] items-center justify-center p-4 font-sans text-slate-100">
+        <div className="bg-slate-950 border border-amber-500/30 w-full max-w-md p-8 rounded-2xl shadow-2xl flex flex-col items-center">
+          <div className="w-16 h-16 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-center mb-4 text-3xl shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+            🏨
+          </div>
+          <h1 className="text-xl font-black text-amber-500 tracking-wider mb-1">DOORS OF CAPPADOCIA</h1>
+          <p className="text-xs text-slate-400 mb-6 tracking-wide">Yönetim Paneli Güvenli Giriş</p>
+
+          <form onSubmit={handleLogin} className="w-full space-y-4">
+            <div>
+              <label className="block text-[10px] text-slate-400 uppercase font-bold mb-1">Kullanıcı Adı</label>
+              <input 
+                type="text" 
+                value={usernameInput} 
+                onChange={(e) => setUsernameInput(e.target.value)} 
+                placeholder="Kullanıcı adınızı girin"
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-200 outline-none focus:border-amber-500 transition-colors" 
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] text-slate-400 uppercase font-bold mb-1">Şifre</label>
+              <input 
+                type="password" 
+                value={passwordInput} 
+                onChange={(e) => setPasswordInput(e.target.value)} 
+                placeholder="Şifrenizi girin"
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-slate-200 outline-none focus:border-amber-500 transition-colors" 
+              />
+            </div>
+
+            {loginError && <p className="text-red-400 text-xs text-center font-bold">{loginError}</p>}
+
+            <button type="submit" className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-black py-3.5 rounded-xl shadow-[0_0_15px_rgba(245,158,11,0.3)] transition-all uppercase tracking-wider text-xs mt-2">
+              GİRİŞ YAP
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // --- ANA PANEL ---
   return (
     <div className="flex h-screen w-screen bg-[#0B1120] text-slate-100 font-sans overflow-hidden">
       
       {/* SOL MENÜ */}
       <aside className="w-16 md:w-56 bg-slate-950 border-r border-amber-500/20 flex flex-col shadow-2xl z-40 transition-all">
         <div className="h-20 flex items-center justify-center md:justify-start md:px-4 border-b border-slate-800 bg-slate-900/30">
-          <img src="/logo.png" alt="Logo" className="w-10 h-10 md:w-12 md:h-12 object-contain drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]" />
+          <span className="text-2xl">🏨</span>
           <div className="hidden md:flex flex-col ml-3">
              <span className="font-black text-amber-500 tracking-widest text-xs leading-tight">DOORS OF</span>
              <span className="font-bold text-slate-300 tracking-widest text-[10px] leading-tight">CAPPADOCIA</span>
@@ -253,6 +319,13 @@ export default function HotelTimelineVIP() {
             <span className="text-xl">💰</span><span className="hidden md:block ml-3 text-sm">Kasa & Muhasebe</span>
           </button>
         </nav>
+
+        {/* ÇIKIŞ BUTONU */}
+        <div className="p-3 border-t border-slate-800">
+          <button onClick={handleLogout} className="w-full flex items-center justify-center md:justify-start px-2 md:px-3 py-2.5 rounded-xl text-rose-400 hover:bg-rose-500/10 transition-all">
+            <span className="text-lg">🚪</span><span className="hidden md:block ml-3 text-xs font-bold">Çıkış Yap</span>
+          </button>
+        </div>
       </aside>
 
       {/* ANA İÇERİK ALANI */}
