@@ -1142,11 +1142,11 @@ export default function App() {
                   <h1 className="text-base sm:text-xl font-bold tracking-tight text-white">
                     Otel Yerden IsÄ±tma Takip Paneli
                   </h1>
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[12px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
                     101 â€“ 120
                   </span>
                 </div>
-                <p className="text-xs text-slate-400">
+                <p className="text-[13px] text-slate-400">
                   Oda iÃ§i gÃ¼n gÃ¼n tarihÃ§e kayÄ±tlÄ± â€¢ Otomatik Firebase senkronizasyonlu
                 </p>
               </div>
@@ -1158,7 +1158,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => setIsSyncModalOpen(true)}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-semibold border transition ${
                 syncStatus === 'synced'
                   ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/25'
                   : syncStatus === 'error'
@@ -1191,7 +1191,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => setIsBulkOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
             >
               <span>Toplu Ä°ÅŸlem</span>
             </button>
@@ -1199,10 +1199,10 @@ export default function App() {
             <button
               type="button"
               onClick={() => setIsLogOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
             >
               <span>Hareket KayÄ±tlarÄ±</span>
-              <span className="ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300 font-semibold">
+              <span className="ml-0.5 px-1.5 py-0.5 rounded-full text-[12px] bg-amber-500/20 text-amber-300 font-semibold">
                 {logs.length}
               </span>
             </button>
@@ -1210,7 +1210,7 @@ export default function App() {
             <button
               type="button"
               onClick={handleExportCsv}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
             >
               <span>Rapor Ä°ndir (CSV)</span>
             </button>
@@ -1218,7 +1218,7 @@ export default function App() {
             <button
               type="button"
               onClick={handleResetDemo}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800/60 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 border border-slate-800 hover:border-rose-800/50 transition"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[13px] font-medium bg-slate-800/60 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 border border-slate-800 hover:border-rose-800/50 transition"
             >
               SÄ±fÄ±rla
             </button>
@@ -1231,60 +1231,60 @@ export default function App() {
         {/* KPI Summary Cards */}
         <section className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-xs text-slate-400">
+            <div className="flex items-center justify-between text-[13px] text-slate-400">
               <span>Toplam Oda</span>
               <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-medium">101-120</span>
             </div>
             <div className="mt-2 flex items-baseline justify-between">
               <span className="text-2xl font-bold text-white">{stats.total}</span>
-              <span className="text-xs text-emerald-400">
+              <span className="text-[13px] text-emerald-400">
                 {stats.occupiedCount} Dolu â€¢ {stats.emptyCount} BoÅŸ
               </span>
             </div>
           </div>
 
           <div className="bg-slate-900 border border-orange-500/20 rounded-xl p-3.5 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-xs text-orange-300/90">
+            <div className="flex items-center justify-between text-[13px] text-orange-300/90">
               <span>Tam IsÄ±tan Odalar</span>
               <span className="w-2 h-2 rounded-full bg-orange-500" />
             </div>
             <div className="mt-2 flex items-baseline justify-between">
               <span className="text-2xl font-bold text-orange-400">{stats.fullCount}</span>
-              <span className="text-xs text-slate-400">2 Vana + 5/5 KollektÃ¶r</span>
+              <span className="text-[13px] text-slate-400">2 Vana + 5/5 KollektÃ¶r</span>
             </div>
           </div>
 
           <div className="bg-slate-900 border border-amber-500/20 rounded-xl p-3.5 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-xs text-amber-300/90">
+            <div className="flex items-center justify-between text-[13px] text-amber-300/90">
               <span>KÄ±smi / KÄ±sÄ±k IsÄ±tma</span>
               <span className="w-2 h-2 rounded-full bg-amber-400" />
             </div>
             <div className="mt-2 flex items-baseline justify-between">
               <span className="text-2xl font-bold text-amber-400">{stats.partialCount}</span>
-              <span className="text-xs text-slate-400">KollektÃ¶r/Vana KÄ±sÄ±k</span>
+              <span className="text-[13px] text-slate-400">KollektÃ¶r/Vana KÄ±sÄ±k</span>
             </div>
           </div>
 
           <div className="bg-slate-900 border border-rose-500/20 rounded-xl p-3.5 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-xs text-rose-300/90">
+            <div className="flex items-center justify-between text-[13px] text-rose-300/90">
               <span>Ana VanasÄ± KapalÄ±</span>
               <span className="w-2 h-2 rounded-full bg-rose-500" />
             </div>
             <div className="mt-2 flex items-baseline justify-between">
               <span className="text-2xl font-bold text-rose-400">{stats.closedCount}</span>
-              <span className="text-xs text-slate-400">IsÄ± AkÄ±ÅŸÄ± Kesik (%0)</span>
+              <span className="text-[13px] text-slate-400">IsÄ± AkÄ±ÅŸÄ± Kesik (%0)</span>
             </div>
           </div>
 
           <div className="col-span-2 lg:col-span-1 bg-slate-900 border border-sky-500/20 rounded-xl p-3.5 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-xs text-sky-300/90">
+            <div className="flex items-center justify-between text-[13px] text-sky-300/90">
               <span>Aktif KollektÃ¶r OranÄ±</span>
-              <span className="text-xs font-semibold text-sky-400">%{stats.roundedFlow}</span>
+              <span className="text-[13px] font-semibold text-sky-400">%{stats.roundedFlow}</span>
             </div>
             <div className="mt-2">
               <div className="flex items-baseline justify-between mb-1">
                 <span className="text-xl font-bold text-white">{stats.roundedFlow} / 100</span>
-                <span className="text-[11px] text-slate-400">Su GeÃ§en Hat</span>
+                <span className="text-[12px] text-slate-400">Su GeÃ§en Hat</span>
               </div>
               <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
                 <div
@@ -1302,7 +1302,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => setMainTab('grid')}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition ${
+              className={`px-4 py-2 rounded-lg text-[13px] font-bold transition ${
                 mainTab === 'grid'
                   ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow'
                   : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
@@ -1313,20 +1313,20 @@ export default function App() {
             <button
               type="button"
               onClick={() => setMainTab('daily_history')}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+              className={`px-4 py-2 rounded-lg text-[13px] font-bold transition flex items-center gap-1.5 ${
                 mainTab === 'daily_history'
                   ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow'
                   : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
               }`}
             >
               <span>GÃ¼n GÃ¼n Oda DeÄŸiÅŸiklik KayÄ±tlarÄ±</span>
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-950/30 text-current">
+              <span className="px-1.5 py-0.5 rounded-full text-[12px] bg-slate-950/30 text-current">
                 TarihÃ§e
               </span>
             </button>
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-slate-400 px-2">
+          <div className="flex items-center gap-2 text-[13px] text-slate-400 px-2">
             <span>
               Cihaz: <strong className="text-amber-400">{deviceName}</strong>
               {resolvedFirebase.label ? ` â€¢ ${resolvedFirebase.label}` : ''}
@@ -1352,7 +1352,7 @@ export default function App() {
                     key={tab.id}
                     type="button"
                     onClick={() => setActiveFilter(tab.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs transition ${
+                    className={`px-3 py-1.5 rounded-lg text-[13px] transition ${
                       activeFilter === tab.id
                         ? 'bg-amber-500 text-slate-950 font-semibold'
                         : 'bg-slate-800 text-slate-300 hover:bg-slate-700 font-medium'
@@ -1369,12 +1369,12 @@ export default function App() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Oda no (Ã¶rn: 101) veya not ara..."
-                  className="flex-1 sm:w-56 px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                  className="flex-1 sm:w-56 px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-[13px] text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
                 />
                 <select
                   value={occupancyFilter}
                   onChange={(e) => setOccupancyFilter(e.target.value as 'all' | 'occupied' | 'empty')}
-                  className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                  className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-[13px] text-slate-200 focus:outline-none focus:border-amber-500"
                 >
                   <option value="all">TÃ¼m Doluluk DurumlarÄ±</option>
                   <option value="occupied">Sadece Dolu Odalar</option>
@@ -1414,7 +1414,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => handleToggleOccupancy(room.id)}
-                            className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition ${
+                            className={`px-2 py-0.5 rounded text-[12px] font-semibold border transition ${
                               room.occupied
                                 ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25'
                                 : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'
@@ -1423,26 +1423,26 @@ export default function App() {
                             {room.occupied ? 'DOLU' : 'BOÅ'}
                           </button>
                         </div>
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${badgeClass}`}>
+                        <span className={`px-2 py-0.5 rounded-full text-[12px] font-semibold ${badgeClass}`}>
                           {m.statusLabel}
                         </span>
                       </div>
 
                       {/* Warnings */}
                       {m.allMainClosed && m.openCollectorCount > 0 && (
-                        <div className="mt-2 px-2.5 py-1 rounded-lg bg-rose-950/70 border border-rose-800/60 text-[11px] text-rose-300 flex items-center gap-1.5">
+                        <div className="mt-2 px-2.5 py-1 rounded-lg bg-rose-950/70 border border-rose-800/60 text-[12px] text-rose-300 flex items-center gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
                           <span>Ana vanalar kapalÄ±! ({m.openCollectorCount} kollektÃ¶r aÃ§Ä±k ama su geÃ§miyor)</span>
                         </div>
                       )}
                       {m.oneMainClosed && (
-                        <div className="mt-2 px-2.5 py-1 rounded-lg bg-rose-950/70 border border-rose-800/60 text-[11px] text-rose-300 flex items-center gap-1.5">
+                        <div className="mt-2 px-2.5 py-1 rounded-lg bg-rose-950/70 border border-rose-800/60 text-[12px] text-rose-300 flex items-center gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
                           <span>Ana vanalardan biri kapalÄ±! Devirdaim iÃ§in 2 ana vana da aÃ§Ä±k olmalÄ±.</span>
                         </div>
                       )}
                       {m.bothMainOpen && m.openCollectorCount === 0 && (
-                        <div className="mt-2 px-2.5 py-1 rounded-lg bg-amber-950/70 border border-amber-800/60 text-[11px] text-amber-300 flex items-center gap-1.5">
+                        <div className="mt-2 px-2.5 py-1 rounded-lg bg-amber-950/70 border border-amber-800/60 text-[12px] text-amber-300 flex items-center gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
                           <span>Ana vanalar aÃ§Ä±k ama 5 kollektÃ¶rÃ¼n tamamÄ± kapalÄ±!</span>
                         </div>
@@ -1450,7 +1450,7 @@ export default function App() {
 
                       {/* 2 Main Valves */}
                       <div className="mt-3">
-                        <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                        <div className="flex items-center justify-between text-[12px] text-slate-400 mb-1">
                           <span>Ana Vanalar ({m.openMainCount}/2 AÃ§Ä±k)</span>
                           <span className="font-medium text-slate-300">IsÄ± GÃ¼cÃ¼: %{m.effectivePct}</span>
                         </div>
@@ -1462,7 +1462,7 @@ export default function App() {
                                 key={vIdx}
                                 type="button"
                                 onClick={() => handleToggleMainValve(room.id, vIdx)}
-                                className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-xs font-medium transition ${
+                                className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-[13px] font-medium transition ${
                                   isOpen
                                     ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25'
                                     : 'bg-rose-950/50 border-rose-800/50 text-rose-400 hover:bg-rose-900/40'
@@ -1472,7 +1472,7 @@ export default function App() {
                                   <span className={`w-2 h-2 rounded-full ${isOpen ? 'bg-emerald-400' : 'bg-rose-500'}`} />
                                   <span>Ana Vana {vIdx + 1}</span>
                                 </span>
-                                <span className="text-[10px] font-bold uppercase">{isOpen ? 'AÃ‡IK' : 'KAPALI'}</span>
+                                <span className="text-[12px] font-bold uppercase">{isOpen ? 'AÃ‡IK' : 'KAPALI'}</span>
                               </button>
                             );
                           })}
@@ -1481,9 +1481,9 @@ export default function App() {
 
                       {/* 5 Collectors */}
                       <div className="mt-3">
-                        <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                        <div className="flex items-center justify-between text-[12px] text-slate-400 mb-1">
                           <span>KollektÃ¶r HatlarÄ± ({m.openCollectorCount}/5 AÃ§Ä±k)</span>
-                          <span className="text-[10px] text-slate-500">TÄ±kla AÃ§/Kapat</span>
+                          <span className="text-[12px] text-slate-500">TÄ±kla AÃ§/Kapat</span>
                         </div>
                         <div className="grid grid-cols-5 gap-1.5">
                           {([0, 1, 2, 3, 4] as const).map((cIdx) => {
@@ -1510,9 +1510,9 @@ export default function App() {
                                 type="button"
                                 onClick={() => handleToggleCollector(room.id, cIdx)}
                                 title={`${COLLECTOR_LABELS[cIdx]}: ${cOpen ? 'AÃ‡IK' : 'KAPALI'}`}
-                                className={`flex flex-col items-center justify-center py-1.5 rounded-lg border text-xs transition ${cStyle}`}
+                                className={`flex flex-col items-center justify-center py-1.5 rounded-lg border text-[13px] transition ${cStyle}`}
                               >
-                                <span className="text-[11px] leading-none">K{cIdx + 1}</span>
+                                <span className="text-[12px] leading-none">K{cIdx + 1}</span>
                                 <span className="text-[9px] mt-0.5 opacity-85">{cOpen ? 'AÃ§Ä±k' : 'KapalÄ±'}</span>
                               </button>
                             );
@@ -1522,7 +1522,7 @@ export default function App() {
 
                       {/* Room Note */}
                       {room.note && (
-                        <div className="mt-2.5 px-2.5 py-1.5 rounded-lg bg-slate-950/90 border border-slate-800/80 text-[11px] text-slate-300 line-clamp-2">
+                        <div className="mt-2.5 px-2.5 py-1.5 rounded-lg bg-slate-950/90 border border-slate-800/80 text-[12px] text-slate-300 line-clamp-2">
                           <span className="text-amber-400 font-medium">Not:</span> {room.note}
                         </div>
                       )}
@@ -1534,13 +1534,13 @@ export default function App() {
                           onClick={() => openRoomDetail(room, 'history')}
                           className="mt-2 w-full text-left px-2.5 py-1.5 rounded-lg bg-slate-950/60 hover:bg-slate-800/80 border border-slate-800/90 transition group"
                         >
-                          <div className="flex items-center justify-between text-[10px] text-slate-400">
+                          <div className="flex items-center justify-between text-[12px] text-slate-400">
                             <span className="font-semibold text-sky-400 group-hover:underline">
                               Son KayÄ±t ({latestHistory.dateLabel} {latestHistory.time})
                             </span>
                             <span>{(room.history || []).length} kayÄ±t â†’</span>
                           </div>
-                          <div className="text-[11px] text-slate-300 truncate mt-0.5">
+                          <div className="text-[12px] text-slate-300 truncate mt-0.5">
                             {latestHistory.action}
                           </div>
                         </button>
@@ -1553,21 +1553,21 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => handleQuickPreset(room.id, 'full')}
-                          className="px-2 py-1 rounded text-[10px] font-medium bg-slate-800 hover:bg-orange-500/20 text-slate-300 hover:text-orange-300 transition"
+                          className="px-2 py-1 rounded text-[12px] font-medium bg-slate-800 hover:bg-orange-500/20 text-slate-300 hover:text-orange-300 transition"
                         >
                           Tam AÃ§
                         </button>
                         <button
                           type="button"
                           onClick={() => handleQuickPreset(room.id, 'eco')}
-                          className="px-2 py-1 rounded text-[10px] font-medium bg-slate-800 hover:bg-amber-500/20 text-slate-300 hover:text-amber-300 transition"
+                          className="px-2 py-1 rounded text-[12px] font-medium bg-slate-800 hover:bg-amber-500/20 text-slate-300 hover:text-amber-300 transition"
                         >
                           3/5 KÄ±s
                         </button>
                         <button
                           type="button"
                           onClick={() => handleQuickPreset(room.id, 'close_main')}
-                          className="px-2 py-1 rounded text-[10px] font-medium bg-slate-800 hover:bg-rose-500/20 text-slate-300 hover:text-rose-300 transition"
+                          className="px-2 py-1 rounded text-[12px] font-medium bg-slate-800 hover:bg-rose-500/20 text-slate-300 hover:text-rose-300 transition"
                         >
                           Ana Vana Kapat
                         </button>
@@ -1575,7 +1575,7 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => openRoomDetail(room, 'history')}
-                        className="px-2 py-1 rounded text-[10px] font-semibold text-amber-400 hover:bg-amber-500/10 transition"
+                        className="px-2 py-1 rounded text-[12px] font-semibold text-amber-400 hover:bg-amber-500/10 transition"
                       >
                         Detay / Not ({(room.history || []).length})
                       </button>
@@ -1595,7 +1595,7 @@ export default function App() {
                     setOccupancyFilter('all');
                     setSearchQuery('');
                   }}
-                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 text-slate-950 hover:bg-amber-400 transition"
+                  className="px-3.5 py-1.5 rounded-lg text-[13px] font-semibold bg-amber-500 text-slate-950 hover:bg-amber-400 transition"
                 >
                   Filtreleri Temizle
                 </button>
@@ -1608,7 +1608,7 @@ export default function App() {
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <h2 className="text-sm font-bold text-white">Oda Ä°Ã§i GÃ¼n GÃ¼n DeÄŸiÅŸiklik KayÄ±tlarÄ± (101â€“120)</h2>
-                <p className="text-xs text-slate-400">
+                <p className="text-[13px] text-slate-400">
                   Hangi gÃ¼n, hangi odada, saat kaÃ§ta hangi vana veya kollektÃ¶r deÄŸiÅŸtirildi detaylÄ± listesi
                 </p>
               </div>
@@ -1616,7 +1616,7 @@ export default function App() {
                 <select
                   value={historyDateFilter}
                   onChange={(e) => setHistoryDateFilter(e.target.value)}
-                  className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                  className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-[13px] text-slate-200 focus:outline-none focus:border-amber-500"
                 >
                   <option value="all">TÃ¼m GÃ¼nler</option>
                   {allRoomHistoryDates.map((d) => (
@@ -1629,7 +1629,7 @@ export default function App() {
                 <select
                   value={historyRoomFilter}
                   onChange={(e) => setHistoryRoomFilter(e.target.value)}
-                  className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                  className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-[13px] text-slate-200 focus:outline-none focus:border-amber-500"
                 >
                   <option value="all">TÃ¼m Odalar (101-120)</option>
                   {rooms.map((r) => (
@@ -1642,7 +1642,7 @@ export default function App() {
             </div>
 
             {groupedDailyRoomHistory.length === 0 ? (
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center text-xs text-slate-400">
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center text-[13px] text-slate-400">
                 SeÃ§ilen kriterlere uygun gÃ¼nlÃ¼k oda kaydÄ± bulunamadÄ±.
               </div>
             ) : (
@@ -1652,9 +1652,9 @@ export default function App() {
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
                       <h3 className="text-sm font-bold text-white">{group.dateLabel}</h3>
-                      <span className="text-xs text-slate-500">({group.dateIso})</span>
+                      <span className="text-[13px] text-slate-500">({group.dateIso})</span>
                     </div>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300">
+                    <span className="px-2.5 py-0.5 rounded-full text-[13px] font-semibold bg-amber-500/15 text-amber-300">
                       {group.items.length} Ä°ÅŸlem
                     </span>
                   </div>
@@ -1671,18 +1671,18 @@ export default function App() {
                               const r = rooms.find((rm) => rm.id === item.roomId);
                               if (r) openRoomDetail(r, 'history');
                             }}
-                            className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-bold text-xs shrink-0 transition"
+                            className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-bold text-[13px] shrink-0 transition"
                           >
                             Oda {item.roomId}
                           </button>
                           <div>
-                            <div className="text-xs font-medium text-slate-100">{item.action}</div>
-                            <div className="text-[11px] text-slate-400 mt-0.5">
+                            <div className="text-[13px] font-medium text-slate-100">{item.action}</div>
+                            <div className="text-[12px] text-slate-400 mt-0.5">
                               Durum Ã–zeti: <span className="text-slate-300">{item.summary}</span>
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 sm:shrink-0 text-[11px] text-slate-400">
+                        <div className="flex items-center gap-2 sm:shrink-0 text-[12px] text-slate-400">
                           <span className="px-2 py-0.5 rounded bg-slate-800 text-sky-300 font-medium">
                             {item.device}
                           </span>
@@ -1707,12 +1707,12 @@ export default function App() {
                 <h2 className="text-base font-bold text-white">
                   Oda {selectedRoom.id} â€” Vana KontrolÃ¼ &amp; GÃ¼n GÃ¼n KayÄ±tlar
                 </h2>
-                <p className="text-xs text-slate-400">Son deÄŸiÅŸiklik: {selectedRoom.updatedAt}</p>
+                <p className="text-[13px] text-slate-400">Son deÄŸiÅŸiklik: {selectedRoom.updatedAt}</p>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedRoomId(null)}
-                className="px-2.5 py-1 rounded-lg text-xs text-slate-400 hover:text-white hover:bg-slate-800"
+                className="px-2.5 py-1 rounded-lg text-[13px] text-slate-400 hover:text-white hover:bg-slate-800"
               >
                 Kapat âœ•
               </button>
@@ -1723,7 +1723,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setModalTab('controls')}
-                className={`px-3.5 py-2 text-xs font-bold border-b-2 transition ${
+                className={`px-3.5 py-2 text-[13px] font-bold border-b-2 transition ${
                   modalTab === 'controls'
                     ? 'border-amber-500 text-amber-400'
                     : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -1734,14 +1734,14 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setModalTab('history')}
-                className={`px-3.5 py-2 text-xs font-bold border-b-2 transition flex items-center gap-1.5 ${
+                className={`px-3.5 py-2 text-[13px] font-bold border-b-2 transition flex items-center gap-1.5 ${
                   modalTab === 'history'
                     ? 'border-amber-500 text-amber-400'
                     : 'border-transparent text-slate-400 hover:text-slate-200'
                 }`}
               >
                 <span>Oda Ä°Ã§i GÃ¼n GÃ¼n GeÃ§miÅŸ</span>
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500/20 text-amber-300">
+                <span className="px-1.5 py-0.2 rounded-full text-[12px] bg-amber-500/20 text-amber-300">
                   {(selectedRoom.history || []).length}
                 </span>
               </button>
@@ -1751,11 +1751,11 @@ export default function App() {
               <div className="p-5 space-y-5 max-h-[75vh] overflow-y-auto">
                 <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-950 p-3 rounded-xl border border-slate-800">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-400">Oda Durumu:</span>
+                    <span className="text-[13px] text-slate-400">Oda Durumu:</span>
                     <button
                       type="button"
                       onClick={() => handleToggleOccupancy(selectedRoom.id)}
-                      className={`px-2.5 py-1 rounded-md text-xs font-semibold border transition ${
+                      className={`px-2.5 py-1 rounded-md text-[13px] font-semibold border transition ${
                         selectedRoom.occupied
                           ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                           : 'bg-slate-800 text-slate-300 border-slate-700'
@@ -1768,21 +1768,21 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => handleQuickPreset(selectedRoom.id, 'full')}
-                      className="px-2.5 py-1 rounded text-xs font-medium bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 border border-orange-500/30 transition"
+                      className="px-2.5 py-1 rounded text-[13px] font-medium bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 border border-orange-500/30 transition"
                     >
                       Tam AÃ§ (2V + 5K)
                     </button>
                     <button
                       type="button"
                       onClick={() => handleQuickPreset(selectedRoom.id, 'eco')}
-                      className="px-2.5 py-1 rounded text-xs font-medium bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/30 transition"
+                      className="px-2.5 py-1 rounded text-[13px] font-medium bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/30 transition"
                     >
                       KÄ±sÄ±k Mod (3/5 K)
                     </button>
                     <button
                       type="button"
                       onClick={() => handleQuickPreset(selectedRoom.id, 'close_main')}
-                      className="px-2.5 py-1 rounded text-xs font-medium bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 border border-rose-500/30 transition"
+                      className="px-2.5 py-1 rounded text-[13px] font-medium bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 border border-rose-500/30 transition"
                     >
                       Ana VanayÄ± Kapat
                     </button>
@@ -1791,7 +1791,7 @@ export default function App() {
 
                 {/* 2 Main Valves */}
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                  <label className="block text-[13px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
                     Ana Vanalar (2 Adet - Oda Ana GiriÅŸ &amp; DÃ¶nÃ¼ÅŸ)
                   </label>
                   <div className="grid grid-cols-2 gap-3">
@@ -1810,15 +1810,15 @@ export default function App() {
                           }`}
                         >
                           <div>
-                            <div className={`text-xs font-bold ${isOpen ? 'text-emerald-300' : 'text-rose-300'}`}>
+                            <div className={`text-[13px] font-bold ${isOpen ? 'text-emerald-300' : 'text-rose-300'}`}>
                               {label}
                             </div>
-                            <div className="text-[11px] text-slate-400 mt-0.5">
+                            <div className="text-[12px] text-slate-400 mt-0.5">
                               {isOpen ? 'Su geÃ§iÅŸi aktif' : 'Vana kapalÄ±'}
                             </div>
                           </div>
                           <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            className={`px-2 py-0.5 rounded text-[12px] font-bold ${
                               isOpen ? 'bg-emerald-500 text-slate-950' : 'bg-rose-500 text-white'
                             }`}
                           >
@@ -1833,10 +1833,10 @@ export default function App() {
                 {/* 5 Collectors */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    <label className="text-[13px] font-semibold uppercase tracking-wider text-slate-400">
                       KollektÃ¶r HatlarÄ± (5 Adet)
                     </label>
-                    <span className="text-xs font-medium text-amber-400">
+                    <span className="text-[13px] font-medium text-amber-400">
                       {selectedRoom.collectors.filter(Boolean).length} / 5 KollektÃ¶r AÃ§Ä±k
                     </span>
                   </div>
@@ -1850,15 +1850,15 @@ export default function App() {
                         >
                           <div className="flex items-center gap-2.5">
                             <span
-                              className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold ${
+                              className={`w-6 h-6 rounded-lg flex items-center justify-center text-[13px] font-bold ${
                                 cOpen ? 'bg-orange-500 text-slate-950' : 'bg-slate-800 text-slate-500'
                               }`}
                             >
                               K{cIdx + 1}
                             </span>
                             <div>
-                              <div className="text-xs font-medium text-slate-200">{COLLECTOR_LABELS[cIdx]}</div>
-                              <div className="text-[10px] text-slate-500">
+                              <div className="text-[13px] font-medium text-slate-200">{COLLECTOR_LABELS[cIdx]}</div>
+                              <div className="text-[12px] text-slate-500">
                                 {cOpen ? 'Mandal AÃ§Ä±k (%20 Kapasite)' : 'Mandal KapalÄ±'}
                               </div>
                             </div>
@@ -1866,7 +1866,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => handleToggleCollector(selectedRoom.id, cIdx)}
-                            className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
+                            className={`px-3 py-1 rounded-lg text-[13px] font-semibold transition ${
                               cOpen
                                 ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30 hover:bg-orange-500/30'
                                 : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
@@ -1882,7 +1882,7 @@ export default function App() {
 
                 {/* Note */}
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                  <label className="block text-[13px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
                     Oda GÃ¼ncel Notu
                   </label>
                   <textarea
@@ -1890,7 +1890,7 @@ export default function App() {
                     value={modalNote}
                     onChange={(e) => setModalNote(e.target.value)}
                     placeholder="Ã–rn: MÃ¼ÅŸteri Ã§ok sÄ±cak dediÄŸi iÃ§in 2 kollektÃ¶r kapatÄ±ldÄ±..."
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-[13px] text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
                   />
                 </div>
               </div>
@@ -1903,18 +1903,18 @@ export default function App() {
                     value={customHistoryEntry}
                     onChange={(e) => setCustomHistoryEntry(e.target.value)}
                     placeholder="Bu oda iÃ§in yeni gÃ¼nlÃ¼k kontrol/bakÄ±m notu ekle..."
-                    className="flex-1 px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    className="flex-1 px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-[13px] text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
                   />
                   <button
                     type="submit"
-                    className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 shrink-0 transition"
+                    className="px-3.5 py-2 rounded-xl text-[13px] font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 shrink-0 transition"
                   >
                     Kayda Ekle
                   </button>
                 </form>
 
                 {selectedRoomHistoryByDay.length === 0 ? (
-                  <p className="text-xs text-slate-500 text-center py-6">Bu oda iÃ§in henÃ¼z kayÄ±t bulunmuyor.</p>
+                  <p className="text-[13px] text-slate-500 text-center py-6">Bu oda iÃ§in henÃ¼z kayÄ±t bulunmuyor.</p>
                 ) : (
                   <div className="space-y-4">
                     {selectedRoomHistoryByDay.map((dayGroup) => (
@@ -1923,18 +1923,18 @@ export default function App() {
                         className="border border-slate-800 rounded-xl overflow-hidden bg-slate-950/60"
                       >
                         <div className="px-3.5 py-2 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
-                          <span className="text-xs font-bold text-amber-400">{dayGroup.dateLabel}</span>
-                          <span className="text-[11px] text-slate-400">{dayGroup.items.length} deÄŸiÅŸiklik</span>
+                          <span className="text-[13px] font-bold text-amber-400">{dayGroup.dateLabel}</span>
+                          <span className="text-[12px] text-slate-400">{dayGroup.items.length} deÄŸiÅŸiklik</span>
                         </div>
                         <div className="divide-y divide-slate-800/60">
                           {dayGroup.items.map((h) => (
                             <div key={h.id} className="p-3 space-y-1">
-                              <div className="flex items-center justify-between text-[11px]">
+                              <div className="flex items-center justify-between text-[12px]">
                                 <span className="font-semibold text-sky-300">{h.device}</span>
                                 <span className="font-mono text-slate-400">{h.time}</span>
                               </div>
-                              <div className="text-xs text-slate-100 font-medium">{h.action}</div>
-                              <div className="text-[11px] text-slate-400">{h.summary}</div>
+                              <div className="text-[13px] text-slate-100 font-medium">{h.action}</div>
+                              <div className="text-[12px] text-slate-400">{h.summary}</div>
                             </div>
                           ))}
                         </div>
@@ -1946,13 +1946,13 @@ export default function App() {
             )}
 
             <div className="px-5 py-3.5 bg-slate-950 border-t border-slate-800 flex items-center justify-between gap-2">
-              <span className="text-[11px] text-slate-400">
+              <span className="text-[12px] text-slate-400">
                 Her vana/kollektÃ¶r deÄŸiÅŸimi otomatik olarak gÃ¼n ve saatiyle kaydedilir.
               </span>
               <button
                 type="button"
                 onClick={handleSaveModalNote}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 transition"
+                className="px-4 py-2 rounded-xl text-[13px] font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 transition"
               >
                 Notu Kaydet & Kapat
               </button>
@@ -1968,14 +1968,14 @@ export default function App() {
             <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
               <div>
                 <h2 className="text-base font-bold text-white">Otomatik Firebase &amp; Cihaz AyarlarÄ±</h2>
-                <p className="text-xs text-slate-400">
+                <p className="text-[13px] text-slate-400">
                   Vana deÄŸiÅŸtiÄŸinde tuÅŸa basmadan otomatik olarak tÃ¼m cihazlarda gÃ¼ncellenir
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsSyncModalOpen(false)}
-                className="px-2.5 py-1 rounded-lg text-xs text-slate-400 hover:text-white hover:bg-slate-800"
+                className="px-2.5 py-1 rounded-lg text-[13px] text-slate-400 hover:text-white hover:bg-slate-800"
               >
                 Kapat âœ•
               </button>
@@ -1985,10 +1985,10 @@ export default function App() {
               {/* Auto-detection status */}
               <div className="p-3.5 rounded-xl bg-slate-950 border border-emerald-500/30 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-emerald-400">Otomatik Senkronizasyon Modu Aktif</span>
-                  <span className="text-[11px] text-slate-400">AnlÄ±k KayÄ±t</span>
+                  <span className="text-[13px] font-bold text-emerald-400">Otomatik Senkronizasyon Modu Aktif</span>
+                  <span className="text-[12px] text-slate-400">AnlÄ±k KayÄ±t</span>
                 </div>
-                <p className="text-[11px] text-slate-300 leading-relaxed">
+                <p className="text-[12px] text-slate-300 leading-relaxed">
                   Herhangi bir vanaya veya kollektÃ¶re dokunduÄŸunuz anda ekstra bir tuÅŸa basmanÄ±za gerek kalmadan <strong>otomatik olarak</strong> kaydedilir. Projenizde <code className="text-amber-300">.env</code> iÃ§inde Firebase tanÄ±mlÄ±ysa doÄŸrudan onu kullanÄ±r; tanÄ±mlÄ± deÄŸilse aÅŸaÄŸÄ±ya Firebase <strong>Project ID</strong> veya <strong>firebaseConfig</strong> kodunuzu bir kez yapÄ±ÅŸtÄ±rmanÄ±z yeterlidir:
                 </p>
                 <textarea
@@ -1996,13 +1996,13 @@ export default function App() {
                   value={cloudUrl}
                   onChange={(e) => setCloudUrl(e.target.value)}
                   placeholder='Firebase Project ID (Ã¶rn: otel-takip-123) veya firebaseConfig kodunuzu buraya yapÄ±ÅŸtÄ±rÄ±n...'
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-[13px] text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
                 />
               </div>
 
               {/* Device Name */}
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                <label className="block text-[13px] font-semibold text-slate-300 mb-1.5">
                   Bu CihazÄ±n AdÄ± (Oda GeÃ§miÅŸinde Kim DeÄŸiÅŸtirdi GÃ¶rÃ¼nmesi Ä°Ã§in)
                 </label>
                 <div className="flex flex-wrap gap-1.5 mb-2">
@@ -2011,7 +2011,7 @@ export default function App() {
                       key={preset}
                       type="button"
                       onClick={() => setDeviceName(preset)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition ${
+                      className={`px-2.5 py-1 rounded-lg text-[13px] font-medium border transition ${
                         deviceName === preset
                           ? 'bg-amber-500 text-slate-950 border-amber-400 font-semibold'
                           : 'bg-slate-950 text-slate-300 border-slate-800 hover:bg-slate-800'
@@ -2026,7 +2026,7 @@ export default function App() {
                   value={deviceName}
                   onChange={(e) => setDeviceName(e.target.value)}
                   placeholder="Ã–rn: Telefon"
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-100 focus:outline-none focus:border-amber-500"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-[13px] text-slate-100 focus:outline-none focus:border-amber-500"
                 />
               </div>
 
@@ -2036,11 +2036,11 @@ export default function App() {
                   <button
                     type="button"
                     onClick={handleExportJsonBackup}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30 transition"
+                    className="px-3 py-1.5 rounded-lg text-[13px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30 transition"
                   >
                     Yedek Ä°ndir (.json)
                   </button>
-                  <label className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700 cursor-pointer transition">
+                  <label className="px-3 py-1.5 rounded-lg text-[13px] font-semibold bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700 cursor-pointer transition">
                     <span>Yedek YÃ¼kle (.json)</span>
                     <input type="file" accept=".json" onChange={handleImportJsonBackup} className="hidden" />
                   </label>
@@ -2048,7 +2048,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={handleResetDemo}
-                  className="px-2.5 py-1.5 rounded-lg text-xs text-rose-400 hover:bg-rose-950/50 transition"
+                  className="px-2.5 py-1.5 rounded-lg text-[13px] text-rose-400 hover:bg-rose-950/50 transition"
                 >
                   VarsayÄ±lana SÄ±fÄ±rla
                 </button>
@@ -2065,7 +2065,7 @@ export default function App() {
                   }
                   showToast('Ayarlar kaydedildi, otomatik eÅŸitleme aktif');
                 }}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 transition"
+                className="px-4 py-2 rounded-xl text-[13px] font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 transition"
               >
                 Tamam
               </button>
@@ -2083,13 +2083,13 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setIsBulkOpen(false)}
-                className="px-2.5 py-1 rounded-lg text-xs text-slate-400 hover:text-white hover:bg-slate-800"
+                className="px-2.5 py-1 rounded-lg text-[13px] text-slate-400 hover:text-white hover:bg-slate-800"
               >
                 Kapat âœ•
               </button>
             </div>
             <div className="p-5 space-y-3">
-              <p className="text-xs text-slate-400">
+              <p className="text-[13px] text-slate-400">
                 HazÄ±r senaryolarla tÃ¼m odalarÄ± (101â€“120) veya sadece boÅŸ odalarÄ± tek tÄ±kla ayarlayabilirsiniz:
               </p>
               <button
@@ -2098,10 +2098,10 @@ export default function App() {
                 className="w-full text-left p-3 rounded-xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 flex items-center justify-between transition"
               >
                 <div>
-                  <div className="text-xs font-semibold text-orange-400">TÃ¼m OdalarÄ± Tam IsÄ±tmaya Al (101-120)</div>
-                  <div className="text-[11px] text-slate-400">2 Ana Vana AÃ§Ä±k + 5/5 KollektÃ¶r AÃ§Ä±k (%100)</div>
+                  <div className="text-[13px] font-semibold text-orange-400">TÃ¼m OdalarÄ± Tam IsÄ±tmaya Al (101-120)</div>
+                  <div className="text-[12px] text-slate-400">2 Ana Vana AÃ§Ä±k + 5/5 KollektÃ¶r AÃ§Ä±k (%100)</div>
                 </div>
-                <span className="text-xs font-bold text-orange-400">Uygula â†’</span>
+                <span className="text-[13px] font-bold text-orange-400">Uygula â†’</span>
               </button>
 
               <button
@@ -2110,10 +2110,10 @@ export default function App() {
                 className="w-full text-left p-3 rounded-xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 flex items-center justify-between transition"
               >
                 <div>
-                  <div className="text-xs font-semibold text-amber-400">BoÅŸ Odalarda 2 KollektÃ¶rÃ¼ Kapat (Tasarruf)</div>
-                  <div className="text-[11px] text-slate-400">BoÅŸ odalarda Ana Vanalar AÃ§Ä±k, 3/5 KollektÃ¶r AÃ§Ä±k (%60)</div>
+                  <div className="text-[13px] font-semibold text-amber-400">BoÅŸ Odalarda 2 KollektÃ¶rÃ¼ Kapat (Tasarruf)</div>
+                  <div className="text-[12px] text-slate-400">BoÅŸ odalarda Ana Vanalar AÃ§Ä±k, 3/5 KollektÃ¶r AÃ§Ä±k (%60)</div>
                 </div>
-                <span className="text-xs font-bold text-amber-400">Uygula â†’</span>
+                <span className="text-[13px] font-bold text-amber-400">Uygula â†’</span>
               </button>
 
               <button
@@ -2122,10 +2122,10 @@ export default function App() {
                 className="w-full text-left p-3 rounded-xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 flex items-center justify-between transition"
               >
                 <div>
-                  <div className="text-xs font-semibold text-rose-400">BoÅŸ OdalarÄ±n Ana VanalarÄ±nÄ± Kapat</div>
-                  <div className="text-[11px] text-slate-400">BoÅŸ odalarda 2 Ana Vana KapatÄ±lÄ±r (%0 IsÄ±)</div>
+                  <div className="text-[13px] font-semibold text-rose-400">BoÅŸ OdalarÄ±n Ana VanalarÄ±nÄ± Kapat</div>
+                  <div className="text-[12px] text-slate-400">BoÅŸ odalarda 2 Ana Vana KapatÄ±lÄ±r (%0 IsÄ±)</div>
                 </div>
-                <span className="text-xs font-bold text-rose-400">Uygula â†’</span>
+                <span className="text-[13px] font-bold text-rose-400">Uygula â†’</span>
               </button>
 
               <button
@@ -2134,10 +2134,10 @@ export default function App() {
                 className="w-full text-left p-3 rounded-xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 flex items-center justify-between transition"
               >
                 <div>
-                  <div className="text-xs font-semibold text-slate-300">TÃ¼m Otelin Ana VanalarÄ±nÄ± Kapat</div>
-                  <div className="text-[11px] text-slate-400">101-120 tÃ¼m ana vanalarÄ± kapatÄ±r</div>
+                  <div className="text-[13px] font-semibold text-slate-300">TÃ¼m Otelin Ana VanalarÄ±nÄ± Kapat</div>
+                  <div className="text-[12px] text-slate-400">101-120 tÃ¼m ana vanalarÄ± kapatÄ±r</div>
                 </div>
-                <span className="text-xs font-bold text-slate-400">Uygula â†’</span>
+                <span className="text-[13px] font-bold text-slate-400">Uygula â†’</span>
               </button>
             </div>
           </div>
@@ -2151,30 +2151,30 @@ export default function App() {
             <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
               <div>
                 <h2 className="text-base font-bold text-white">Genel Hareket KayÄ±tlarÄ±</h2>
-                <p className="text-xs text-slate-400">Tarih, saat ve cihaz bilgisiyle tÃ¼m iÅŸlemler</p>
+                <p className="text-[13px] text-slate-400">Tarih, saat ve cihaz bilgisiyle tÃ¼m iÅŸlemler</p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsLogOpen(false)}
-                className="px-2.5 py-1 rounded-lg text-xs text-slate-400 hover:text-white hover:bg-slate-800"
+                className="px-2.5 py-1 rounded-lg text-[13px] text-slate-400 hover:text-white hover:bg-slate-800"
               >
                 Kapat âœ•
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
               {logs.length === 0 ? (
-                <p className="text-xs text-slate-500 text-center py-8">HenÃ¼z kayÄ±tlÄ± iÅŸlem bulunmuyor.</p>
+                <p className="text-[13px] text-slate-500 text-center py-8">HenÃ¼z kayÄ±tlÄ± iÅŸlem bulunmuyor.</p>
               ) : (
                 logs.map((item) => (
                   <div
                     key={item.id}
-                    className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs space-y-1"
+                    className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-[13px] space-y-1"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="inline-block px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 font-bold text-[10px]">
+                      <span className="inline-block px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 font-bold text-[12px]">
                         Oda {item.room}
                       </span>
-                      <span className="text-[10px] text-slate-400">
+                      <span className="text-[12px] text-slate-400">
                         {item.dateLabel} â€¢ <strong className="text-slate-200">{item.time}</strong> ({item.device})
                       </span>
                     </div>
@@ -2190,11 +2190,11 @@ export default function App() {
                   setLogs([]);
                   showToast('Genel hareket kayÄ±tlarÄ± temizlendi');
                 }}
-                className="text-xs text-rose-400 hover:text-rose-300 font-medium"
+                className="text-[13px] text-rose-400 hover:text-rose-300 font-medium"
               >
                 KayÄ±tlarÄ± Temizle
               </button>
-              <span className="text-[11px] text-slate-500">Oda iÃ§i gÃ¼nlÃ¼k kayÄ±tlar korunur</span>
+              <span className="text-[12px] text-slate-500">Oda iÃ§i gÃ¼nlÃ¼k kayÄ±tlar korunur</span>
             </div>
           </div>
         </div>
@@ -2202,7 +2202,7 @@ export default function App() {
 
       {/* Toast */}
       {toastText && (
-        <div className="fixed bottom-4 right-4 z-50 bg-slate-800 border border-amber-500/40 text-slate-100 px-3.5 py-2 rounded-xl shadow-lg text-xs font-medium flex items-center gap-2">
+        <div className="fixed bottom-4 right-4 z-50 bg-slate-800 border border-amber-500/40 text-slate-100 px-3.5 py-2 rounded-xl shadow-lg text-[13px] font-medium flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
           <span>{toastText}</span>
         </div>
