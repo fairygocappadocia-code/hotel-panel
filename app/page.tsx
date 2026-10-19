@@ -2,9 +2,11 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 
-// Firebase projesi: doors-panel
-// Bu panel mevcut Firestore REST senkronizasyonunu kullanÄ±r.
-// Firebase Console > Firestore Database bÃ¶lÃ¼mÃ¼nde veritabanÄ± oluÅŸturulmalÄ±dÄ±r.
+// ============================================================================
+// FIREBASE PROJESİ: doors-panel (OTOMATİK ENTEGRE EDİLDİ)
+// Bu panel mevcut Firestore REST senkronizasyonunu kullanır.
+// Telefon ve bilgisayar arasında hiçbir ek ayar gerektirmeden otomatik eşitler.
+// ============================================================================
 const DEFAULT_FIREBASE_CONFIG = {
   apiKey: 'AIzaSyBkAafEYmhC_UCIK6nK19zGn1pEy45mtVA',
   authDomain: 'doors-panel.firebaseapp.com',
@@ -13,9 +15,8 @@ const DEFAULT_FIREBASE_CONFIG = {
   messagingSenderId: '717146829376',
   appId: '1:717146829376:web:1b05588aa972d56e0865a5',
   measurementId: 'G-N98E7SFG26',
-  databaseURL: '', // Realtime Database URL verilmedi; Firestore kullanÄ±lacak.
+  databaseURL: '', // Realtime Database URL verilmedi; Firestore kullanılacak.
 };
-
 
 interface RoomHistoryItem {
   id: string;
@@ -49,7 +50,7 @@ interface LogEntry {
 
 const STORAGE_KEY = 'otel_yerden_isitma_v2';
 const LOG_STORAGE_KEY = 'otel_yerden_isitma_logs_v2';
-const SYNC_CONFIG_KEY = 'otel_yerden_isitma_sync_v2';
+const SYNC_CONFIG_KEY = 'otel_yerden_isitma_sync_v3_doors';
 const BROADCAST_CHANNEL_NAME = 'otel_yerden_isitma_live_channel';
 
 const COLLECTOR_LABELS: [string, string, string, string, string] = [
@@ -104,22 +105,25 @@ function formatValvesSummary(
 
 function parseFirebaseInput(raw: string): { mode: 'rtdb' | 'firestore' | 'none'; endpoint: string; label: string } {
   const text = (raw || '').trim();
-  if (!text) {
+  const defaultKeyParam = DEFAULT_FIREBASE_CONFIG.apiKey
+    ? `?key=${encodeURIComponent(DEFAULT_FIREBASE_CONFIG.apiKey)}`
+    : '';
+
+  if (!text || text === DEFAULT_FIREBASE_CONFIG.projectId) {
     if (DEFAULT_FIREBASE_CONFIG.databaseURL) {
       const clean = DEFAULT_FIREBASE_CONFIG.databaseURL.replace(/\/+$/, '');
       return {
         mode: 'rtdb',
         endpoint: clean.endsWith('.json') ? clean : `${clean}/otel_yerden_isitma_v2.json`,
-        label: 'Firebase Realtime DB (.env)',
+        label: 'Firebase Realtime DB',
       };
     }
     if (DEFAULT_FIREBASE_CONFIG.projectId) {
       const pid = DEFAULT_FIREBASE_CONFIG.projectId.trim();
-      const keyParam = DEFAULT_FIREBASE_CONFIG.apiKey ? `?key=${encodeURIComponent(DEFAULT_FIREBASE_CONFIG.apiKey)}` : '';
       return {
         mode: 'firestore',
-        endpoint: `https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/otel_takip/yerden_isitma_v2${keyParam}`,
-        label: `Firebase Firestore (${pid})`,
+        endpoint: `https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/otel_takip/yerden_isitma_v2${defaultKeyParam}`,
+        label: `Firebase (${pid})`,
       };
     }
     return { mode: 'none', endpoint: '', label: '' };
@@ -141,11 +145,13 @@ function parseFirebaseInput(raw: string): { mode: 'rtdb' | 'firestore' | 'none';
   const apiKeyMatch = text.match(/apiKey\s*:\s*["']([^"']+)["']/);
   if (projectIdMatch) {
     const pid = projectIdMatch[1].trim();
-    const keyParam = apiKeyMatch ? `?key=${encodeURIComponent(apiKeyMatch[1].trim())}` : '';
+    const keyParam = apiKeyMatch
+      ? `?key=${encodeURIComponent(apiKeyMatch[1].trim())}`
+      : defaultKeyParam;
     return {
       mode: 'firestore',
       endpoint: `https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/otel_takip/yerden_isitma_v2${keyParam}`,
-      label: `Firebase Firestore (${pid})`,
+      label: `Firebase (${pid})`,
     };
   }
 
@@ -168,7 +174,7 @@ function parseFirebaseInput(raw: string): { mode: 'rtdb' | 'firestore' | 'none';
   if (cleanPid.length >= 4) {
     return {
       mode: 'firestore',
-      endpoint: `https://firestore.googleapis.com/v1/projects/${cleanPid}/databases/(default)/documents/otel_takip/yerden_isitma_v2`,
+      endpoint: `https://firestore.googleapis.com/v1/projects/${cleanPid}/databases/(default)/documents/otel_takip/yerden_isitma_v2${defaultKeyParam}`,
       label: `Firebase (${cleanPid})`,
     };
   }
@@ -442,13 +448,11 @@ export default function App() {
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [toastText, setToastText] = useState<string | null>(null);
 
-  // Automatic Firebase Sync States
+  // Automatic Firebase Sync States (pre-configured with doors-panel)
   const [deviceName, setDeviceName] = useState<string>('Bilgisayar');
-  const [cloudUrl, setCloudUrl] = useState<string>(
-    DEFAULT_FIREBASE_CONFIG.databaseURL || DEFAULT_FIREBASE_CONFIG.projectId || ''
-  );
-  const [quickConnectInput, setQuickConnectInput] = useState<string>('');
-  const [syncStatus, setSyncStatus] = useState<'local' | 'synced' | 'syncing' | 'error'>('local');
+  const [cloudUrl, setCloudUrl] = useState<string>(DEFAULT_FIREBASE_CONFIG.projectId);
+  const [quickConnectInput, setQuickConnectInput] = useState<string>(DEFAULT_FIREBASE_CONFIG.projectId);
+  const [syncStatus, setSyncStatus] = useState<'local' | 'synced' | 'syncing' | 'error'>('synced');
   const [syncErrorMsg, setSyncErrorMsg] = useState<string>('');
   const [lastSyncedAt, setLastSyncedAt] = useState<string>('--:--');
 
@@ -480,7 +484,7 @@ export default function App() {
     }
   }, []);
 
-  // Automatic background push to Firebase
+  // Automatic background push to Firebase (doors-panel Firestore)
   const pushToCloud = useCallback(
     async (nextRooms: Room[], nextLogs: LogEntry[], customInput?: string) => {
       const target = customInput !== undefined ? parseFirebaseInput(customInput) : resolvedFirebase;
@@ -525,11 +529,11 @@ export default function App() {
           setLastSyncedAt(getNowTimeStr());
         } else {
           setSyncStatus('error');
-          setSyncErrorMsg(`HTTP ${res.status}: Firebase izin/adres hatası`);
+          setSyncErrorMsg(`HTTP ${res.status}: Firestore izin/veritabanı kontrolü gerekli`);
         }
       } catch {
         setSyncStatus('error');
-        setSyncErrorMsg('Bağlantı kurulamadı (Adresi kontrol edin)');
+        setSyncErrorMsg('Bağlantı kurulamadı (İnternet veya güvenlik duvarı)');
       } finally {
         isPushingRef.current = false;
       }
@@ -537,7 +541,7 @@ export default function App() {
     [deviceName, resolvedFirebase]
   );
 
-  // Automatic background pull from Firebase (does NOT depend on rooms/logs state so it never races!)
+  // Automatic background pull from Firebase (doors-panel Firestore)
   const pullFromCloud = useCallback(
     async (silent = true, customInput?: string) => {
       if (isPushingRef.current) return;
@@ -553,7 +557,7 @@ export default function App() {
         }
         if (!res.ok) {
           setSyncStatus('error');
-          setSyncErrorMsg(`HTTP ${res.status}: Firebase erişim hatası`);
+          setSyncErrorMsg(`HTTP ${res.status}: Firestore veritabanı erişim uyarısı`);
           return;
         }
         const raw = await res.json();
@@ -630,7 +634,7 @@ export default function App() {
       if (savedSync) {
         const cfg = JSON.parse(savedSync);
         if (cfg.deviceName) setDeviceName(cfg.deviceName);
-        if (cfg.cloudUrl && !DEFAULT_FIREBASE_CONFIG.databaseURL && !DEFAULT_FIREBASE_CONFIG.projectId) {
+        if (cfg.cloudUrl) {
           setCloudUrl(cfg.cloudUrl);
           setQuickConnectInput(cfg.cloudUrl);
         }
@@ -639,7 +643,6 @@ export default function App() {
       // Ignore storage errors
     }
 
-    // Setup BroadcastChannel for instant multi-tab sync on the same computer
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
         const bc = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
@@ -672,7 +675,7 @@ export default function App() {
 
   // Save sync config when changed
   const handleSaveCloudConfig = (newUrl: string, newDevice?: string) => {
-    const cleanUrl = newUrl.trim();
+    const cleanUrl = newUrl.trim() || DEFAULT_FIREBASE_CONFIG.projectId;
     const nextDev = newDevice !== undefined ? newDevice : deviceName;
     setCloudUrl(cleanUrl);
     setQuickConnectInput(cleanUrl);
@@ -684,14 +687,10 @@ export default function App() {
     } catch {
       // Ignore
     }
-    if (cleanUrl) {
-      pullFromCloud(false, cleanUrl);
-    } else {
-      setSyncStatus('local');
-    }
+    pullFromCloud(false, cleanUrl);
   };
 
-  // Listen to storage events across tabs + poll Firebase every 2 seconds
+  // Listen to storage events across tabs + poll Firebase doors-panel every 2 seconds
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
       try {
@@ -703,13 +702,6 @@ export default function App() {
           const parsedLogs = JSON.parse(e.newValue);
           if (Array.isArray(parsedLogs)) setLogs(parsedLogs);
         }
-        if (e.key === SYNC_CONFIG_KEY && e.newValue) {
-          const cfg = JSON.parse(e.newValue);
-          if (cfg.cloudUrl !== undefined) {
-            setCloudUrl(cfg.cloudUrl);
-            setQuickConnectInput(cfg.cloudUrl);
-          }
-        }
       } catch {
         // Ignore
       }
@@ -717,7 +709,6 @@ export default function App() {
     window.addEventListener('storage', handleStorageChange);
 
     const handleFocus = () => {
-      // Also re-read localStorage on tab focus for instant tab sync
       try {
         const savedRooms = localStorage.getItem(STORAGE_KEY);
         if (savedRooms) {
@@ -745,8 +736,6 @@ export default function App() {
       intervalId = setInterval(() => {
         pullFromCloud(true);
       }, 2000);
-    } else {
-      setSyncStatus('local');
     }
 
     return () => {
@@ -1248,13 +1237,13 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 font-sans selection:bg-amber-500 selection:text-slate-950">
-      {/* Top Header */}
-      <header className="sticky top-0 z-30 bg-slate-900/95 backdrop-blur border-b border-slate-800 px-4 py-3 sm:px-6">
+    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans selection:bg-orange-500 selection:text-white">
+      {/* Top Header (Light & Clean) */}
+      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm px-4 py-3 sm:px-6">
         <div className="max-w-7xl mx-auto flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center shadow-lg shadow-orange-500/20 shrink-0">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-md shadow-orange-500/20 shrink-0">
                 <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <path
                     strokeLinecap="round"
@@ -1270,15 +1259,15 @@ export default function App() {
               </div>
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-base sm:text-xl font-bold tracking-tight text-white">
+                  <h1 className="text-base sm:text-xl font-bold tracking-tight text-slate-900">
                     Otel Yerden Isıtma Takip Paneli
                   </h1>
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                    101 – 120
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-orange-50 text-orange-700 border border-orange-200">
+                    101 – 120 (20 Oda)
                   </span>
                 </div>
-                <p className="text-xs text-slate-400">
-                  Sekmeler arası anında eşitleme • Oda içi gün gün tarihçe kayıtlı
+                <p className="text-xs text-slate-500">
+                  Firebase (<strong className="text-slate-700">doors-panel</strong>) canlı senkronizasyon • Oda içi gün gün kayıtlı
                 </p>
               </div>
             </div>
@@ -1291,38 +1280,38 @@ export default function App() {
               onClick={() => setIsSyncModalOpen(true)}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
                 syncStatus === 'synced'
-                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/25'
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
                   : syncStatus === 'error'
-                  ? 'bg-rose-500/15 text-rose-300 border-rose-500/40 hover:bg-rose-500/25'
-                  : 'bg-amber-500/15 text-amber-300 border-amber-500/40 hover:bg-amber-500/25'
+                  ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                  : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
               }`}
             >
               <span
                 className={`w-2 h-2 rounded-full ${
                   syncStatus === 'synced'
-                    ? 'bg-emerald-400'
+                    ? 'bg-emerald-500'
                     : syncStatus === 'syncing'
-                    ? 'bg-amber-400 animate-ping'
+                    ? 'bg-amber-500 animate-ping'
                     : syncStatus === 'error'
                     ? 'bg-rose-500'
-                    : 'bg-amber-400'
+                    : 'bg-amber-500'
                 }`}
               />
               <span>
                 {syncStatus === 'synced'
-                  ? `Firebase Bağlı (${lastSyncedAt})`
+                  ? `Canlı Bağlı: doors-panel (${lastSyncedAt})`
                   : syncStatus === 'syncing'
-                  ? 'Kaydediliyor...'
+                  ? 'Eşitleniyor...'
                   : syncStatus === 'error'
-                  ? 'Bağlantı Hatası (Ayarla)'
-                  : 'Telefon ↔ PC Bağla (Firebase)'}
+                  ? 'Bağlantı Uyarısı (Detay)'
+                  : 'Telefon ↔ PC Bağlı (doors-panel)'}
               </span>
             </button>
 
             <button
               type="button"
               onClick={() => setIsBulkOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 shadow-sm transition"
             >
               <span>Toplu İşlem</span>
             </button>
@@ -1330,10 +1319,10 @@ export default function App() {
             <button
               type="button"
               onClick={() => setIsLogOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 shadow-sm transition"
             >
               <span>Hareket Kayıtları</span>
-              <span className="ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300 font-semibold">
+              <span className="ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] bg-orange-100 text-orange-700 font-bold">
                 {logs.length}
               </span>
             </button>
@@ -1341,7 +1330,7 @@ export default function App() {
             <button
               type="button"
               onClick={handleExportCsv}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 shadow-sm transition"
             >
               <span>Rapor İndir (CSV)</span>
             </button>
@@ -1349,7 +1338,7 @@ export default function App() {
             <button
               type="button"
               onClick={handleResetDemo}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800/60 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 border border-slate-800 hover:border-rose-800/50 transition"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white hover:bg-rose-50 text-slate-500 hover:text-rose-600 border border-slate-200 hover:border-rose-200 transition"
             >
               Sıfırla
             </button>
@@ -1359,111 +1348,80 @@ export default function App() {
 
       {/* Main Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-5 sm:px-6 space-y-5">
-        {/* Inline Quick-Connect Bar when Firebase is not yet linked */}
-        {resolvedFirebase.mode === 'none' && (
-          <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
-                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                <span>Aynı Bilgisayardaki Sekmeler Otomatik Eşitlenir • Telefon ↔ PC İçin Firebase Adresi Girin:</span>
-              </div>
-              <p className="text-[11px] text-slate-300">
-                Eski <code className="text-amber-300">page.tsx</code> dosyanızı sildiğinizde içindeki Firebase bağlantı kodu da silindiği için telefon ve bilgisayar birbirini göremez. Firebase <strong>Project ID</strong> veya <strong>Database URL</strong> bilginizi aşağıya yapıştırıp <strong>Bağla</strong>&apos;ya basın:
-              </p>
-            </div>
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
-              <input
-                type="text"
-                value={quickConnectInput}
-                onChange={(e) => setQuickConnectInput(e.target.value)}
-                placeholder="Project ID veya https://...firebaseio.com"
-                className="w-full sm:w-72 px-3 py-2 bg-slate-950 border border-amber-500/40 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 font-mono"
-              />
-              <button
-                type="button"
-                onClick={() => handleSaveCloudConfig(quickConnectInput)}
-                className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 transition shrink-0"
-              >
-                Bağla &amp; Eşitle
-              </button>
-            </div>
-          </div>
-        )}
-
         {syncStatus === 'error' && syncErrorMsg && (
-          <div className="bg-rose-950/60 border border-rose-500/40 rounded-xl px-4 py-2.5 flex items-center justify-between gap-2 text-xs text-rose-200">
+          <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 flex items-center justify-between gap-2 text-xs text-rose-800 shadow-sm">
             <span>
-              <strong>Firebase Bağlantı Uyarısı:</strong> {syncErrorMsg} (Firestore veya Realtime Database kurallarınızın okuma/yazmaya açık olduğundan emin olun).
+              <strong>Firebase (doors-panel) Uyarısı:</strong> {syncErrorMsg}. Lütfen Firebase Console &gt; Firestore Database bölümünde veritabanının oluşturulduğundan ve Rules (Kurallar) kısmının açık olduğundan emin olun.
             </span>
             <button
               type="button"
               onClick={() => setIsSyncModalOpen(true)}
-              className="px-2.5 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 font-semibold shrink-0"
+              className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold shrink-0 transition"
             >
-              Ayarları Aç
+              Kontrol Et
             </button>
           </div>
         )}
 
         {/* KPI Summary Cards */}
         <section className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-xs text-slate-400">
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col justify-between">
+            <div className="flex items-center justify-between text-xs font-medium text-slate-500">
               <span>Toplam Oda</span>
-              <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-medium">101-120</span>
+              <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-semibold">101-120</span>
             </div>
             <div className="mt-2 flex items-baseline justify-between">
-              <span className="text-2xl font-bold text-white">{stats.total}</span>
-              <span className="text-xs text-emerald-400">
+              <span className="text-2xl font-bold text-slate-900">{stats.total}</span>
+              <span className="text-xs font-semibold text-emerald-600">
                 {stats.occupiedCount} Dolu • {stats.emptyCount} Boş
               </span>
             </div>
           </div>
 
-          <div className="bg-slate-900 border border-orange-500/20 rounded-xl p-3.5 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-xs text-orange-300/90">
+          <div className="bg-white border border-orange-200 rounded-2xl p-4 shadow-sm flex flex-col justify-between">
+            <div className="flex items-center justify-between text-xs font-semibold text-orange-700">
               <span>Tam Isıtan Odalar</span>
-              <span className="w-2 h-2 rounded-full bg-orange-500" />
+              <span className="w-2.5 h-2.5 rounded-full bg-orange-500" />
             </div>
             <div className="mt-2 flex items-baseline justify-between">
-              <span className="text-2xl font-bold text-orange-400">{stats.fullCount}</span>
-              <span className="text-xs text-slate-400">2 Vana + 5/5 Kollektör</span>
+              <span className="text-2xl font-bold text-orange-600">{stats.fullCount}</span>
+              <span className="text-xs text-slate-500">2 Vana + 5/5 Kollektör</span>
             </div>
           </div>
 
-          <div className="bg-slate-900 border border-amber-500/20 rounded-xl p-3.5 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-xs text-amber-300/90">
+          <div className="bg-white border border-amber-200 rounded-2xl p-4 shadow-sm flex flex-col justify-between">
+            <div className="flex items-center justify-between text-xs font-semibold text-amber-700">
               <span>Kısmi / Kısık Isıtma</span>
-              <span className="w-2 h-2 rounded-full bg-amber-400" />
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
             </div>
             <div className="mt-2 flex items-baseline justify-between">
-              <span className="text-2xl font-bold text-amber-400">{stats.partialCount}</span>
-              <span className="text-xs text-slate-400">Kollektör/Vana Kısık</span>
+              <span className="text-2xl font-bold text-amber-600">{stats.partialCount}</span>
+              <span className="text-xs text-slate-500">Kollektör/Vana Kısık</span>
             </div>
           </div>
 
-          <div className="bg-slate-900 border border-rose-500/20 rounded-xl p-3.5 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-xs text-rose-300/90">
+          <div className="bg-white border border-rose-200 rounded-2xl p-4 shadow-sm flex flex-col justify-between">
+            <div className="flex items-center justify-between text-xs font-semibold text-rose-700">
               <span>Ana Vanası Kapalı</span>
-              <span className="w-2 h-2 rounded-full bg-rose-500" />
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
             </div>
             <div className="mt-2 flex items-baseline justify-between">
-              <span className="text-2xl font-bold text-rose-400">{stats.closedCount}</span>
-              <span className="text-xs text-slate-400">Isı Akışı Kesik (%0)</span>
+              <span className="text-2xl font-bold text-rose-600">{stats.closedCount}</span>
+              <span className="text-xs text-slate-500">Isı Akışı Kesik (%0)</span>
             </div>
           </div>
 
-          <div className="col-span-2 lg:col-span-1 bg-slate-900 border border-sky-500/20 rounded-xl p-3.5 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-xs text-sky-300/90">
+          <div className="col-span-2 lg:col-span-1 bg-white border border-sky-200 rounded-2xl p-4 shadow-sm flex flex-col justify-between">
+            <div className="flex items-center justify-between text-xs font-semibold text-sky-700">
               <span>Aktif Kollektör Oranı</span>
-              <span className="text-xs font-semibold text-sky-400">%{stats.roundedFlow}</span>
+              <span className="text-xs font-bold text-sky-600">%{stats.roundedFlow}</span>
             </div>
             <div className="mt-2">
               <div className="flex items-baseline justify-between mb-1">
-                <span className="text-xl font-bold text-white">{stats.roundedFlow} / 100</span>
-                <span className="text-[11px] text-slate-400">Su Geçen Hat</span>
+                <span className="text-xl font-bold text-slate-900">{stats.roundedFlow} / 100</span>
+                <span className="text-[11px] text-slate-500">Su Geçen Hat</span>
               </div>
-              <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+              <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-gradient-to-r from-sky-500 to-orange-500 transition-all duration-300"
                   style={{ width: `${stats.roundedFlow}%` }}
@@ -1474,15 +1432,15 @@ export default function App() {
         </section>
 
         {/* Main View Switcher: Oda Paneli vs Gün Gün Oda Tarihçesi */}
-        <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-xl p-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-slate-200 rounded-2xl p-2.5 shadow-sm">
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setMainTab('grid')}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition ${
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition ${
                 mainTab === 'grid'
-                  ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow'
-                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                  ? 'bg-orange-500 text-white shadow-sm shadow-orange-500/30'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
               Oda Vana &amp; Kollektör Paneli (101–120)
@@ -1490,23 +1448,27 @@ export default function App() {
             <button
               type="button"
               onClick={() => setMainTab('daily_history')}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
                 mainTab === 'daily_history'
-                  ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow'
-                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                  ? 'bg-orange-500 text-white shadow-sm shadow-orange-500/30'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
               <span>Gün Gün Oda Değişiklik Kayıtları</span>
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-950/30 text-current">
+              <span
+                className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                  mainTab === 'daily_history' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+                }`}
+              >
                 Tarihçe
               </span>
             </button>
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-slate-400 px-2">
+          <div className="flex items-center gap-2 text-xs text-slate-500 px-2">
             <span>
-              Cihaz: <strong className="text-amber-400">{deviceName}</strong>
-              {resolvedFirebase.label ? ` • ${resolvedFirebase.label}` : ' • Sekme Eşitleme Aktif'}
+              Aktif Cihaz: <strong className="text-slate-800">{deviceName}</strong> • Proje:{' '}
+              <strong className="text-emerald-600">doors-panel</strong>
             </span>
           </div>
         </div>
@@ -1514,7 +1476,7 @@ export default function App() {
         {mainTab === 'grid' ? (
           <>
             {/* Filter & Search Toolbar */}
-            <section className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <section className="bg-white border border-slate-200 rounded-2xl p-3.5 shadow-sm flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex flex-wrap items-center gap-1.5">
                 {(
                   [
@@ -1529,10 +1491,10 @@ export default function App() {
                     key={tab.id}
                     type="button"
                     onClick={() => setActiveFilter(tab.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs transition ${
+                    className={`px-3 py-1.5 rounded-xl text-xs transition ${
                       activeFilter === tab.id
-                        ? 'bg-amber-500 text-slate-950 font-semibold'
-                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700 font-medium'
+                        ? 'bg-slate-900 text-white font-semibold shadow-sm'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium'
                     }`}
                   >
                     {tab.label}
@@ -1546,12 +1508,12 @@ export default function App() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Oda no (örn: 101) veya not ara..."
-                  className="flex-1 sm:w-56 px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                  className="flex-1 sm:w-56 px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-orange-500 focus:bg-white"
                 />
                 <select
                   value={occupancyFilter}
                   onChange={(e) => setOccupancyFilter(e.target.value as 'all' | 'occupied' | 'empty')}
-                  className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                  className="bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-orange-500"
                 >
                   <option value="all">Tüm Doluluk Durumları</option>
                   <option value="occupied">Sadece Dolu Odalar</option>
@@ -1560,76 +1522,76 @@ export default function App() {
               </div>
             </section>
 
-            {/* Rooms Grid */}
+            {/* Rooms Grid (Light Cards) */}
             <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {filteredRooms.map((room) => {
                 const m = getRoomMetrics(room);
                 const latestHistory = room.history && room.history.length > 0 ? room.history[0] : null;
 
-                let borderClass = 'border-slate-800 hover:border-slate-700';
-                let badgeClass = 'bg-slate-800 text-slate-300';
+                let borderClass = 'border-slate-200 hover:border-slate-300';
+                let badgeClass = 'bg-slate-100 text-slate-700';
                 if (m.statusColor === 'orange') {
-                  borderClass = 'border-orange-500/30 hover:border-orange-500/60';
-                  badgeClass = 'bg-orange-500/15 text-orange-300 border border-orange-500/30';
+                  borderClass = 'border-orange-200 hover:border-orange-400';
+                  badgeClass = 'bg-orange-50 text-orange-700 border border-orange-200';
                 } else if (m.statusColor === 'amber') {
-                  borderClass = 'border-amber-500/30 hover:border-amber-500/60';
-                  badgeClass = 'bg-amber-500/15 text-amber-300 border border-amber-500/30';
+                  borderClass = 'border-amber-300 hover:border-amber-400';
+                  badgeClass = 'bg-amber-50 text-amber-800 border border-amber-200';
                 } else if (m.statusColor === 'rose') {
-                  borderClass = 'border-rose-500/30 hover:border-rose-500/60';
-                  badgeClass = 'bg-rose-500/15 text-rose-300 border border-rose-500/30';
+                  borderClass = 'border-rose-200 hover:border-rose-400';
+                  badgeClass = 'bg-rose-50 text-rose-700 border border-rose-200';
                 }
 
                 return (
                   <div
                     key={room.id}
-                    className={`bg-slate-900 border ${borderClass} rounded-2xl p-4 flex flex-col justify-between transition shadow-sm`}
+                    className={`bg-white border-2 ${borderClass} rounded-2xl p-4 flex flex-col justify-between transition shadow-sm hover:shadow-md`}
                   >
                     <div>
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2">
-                          <span className="text-lg font-bold text-white tracking-tight">Oda {room.id}</span>
+                          <span className="text-lg font-extrabold text-slate-900 tracking-tight">Oda {room.id}</span>
                           <button
                             type="button"
                             onClick={() => handleToggleOccupancy(room.id)}
-                            className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition ${
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold border transition ${
                               room.occupied
-                                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25'
-                                : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
                             }`}
                           >
                             {room.occupied ? 'DOLU' : 'BOŞ'}
                           </button>
                         </div>
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${badgeClass}`}>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${badgeClass}`}>
                           {m.statusLabel}
                         </span>
                       </div>
 
                       {/* Warnings */}
                       {m.allMainClosed && m.openCollectorCount > 0 && (
-                        <div className="mt-2 px-2.5 py-1 rounded-lg bg-rose-950/70 border border-rose-800/60 text-[11px] text-rose-300 flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
+                        <div className="mt-2 px-2.5 py-1.5 rounded-xl bg-rose-50 border border-rose-200 text-[11px] text-rose-700 font-medium flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
                           <span>Ana vanalar kapalı! ({m.openCollectorCount} kollektör açık ama su geçmiyor)</span>
                         </div>
                       )}
                       {m.oneMainClosed && (
-                        <div className="mt-2 px-2.5 py-1 rounded-lg bg-rose-950/70 border border-rose-800/60 text-[11px] text-rose-300 flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
+                        <div className="mt-2 px-2.5 py-1.5 rounded-xl bg-rose-50 border border-rose-200 text-[11px] text-rose-700 font-medium flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
                           <span>Ana vanalardan biri kapalı! Devirdaim için 2 ana vana da açık olmalı.</span>
                         </div>
                       )}
                       {m.bothMainOpen && m.openCollectorCount === 0 && (
-                        <div className="mt-2 px-2.5 py-1 rounded-lg bg-amber-950/70 border border-amber-800/60 text-[11px] text-amber-300 flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                        <div className="mt-2 px-2.5 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-800 font-medium flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
                           <span>Ana vanalar açık ama 5 kollektörün tamamı kapalı!</span>
                         </div>
                       )}
 
                       {/* 2 Main Valves */}
                       <div className="mt-3">
-                        <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
-                          <span>Ana Vanalar ({m.openMainCount}/2 Açık)</span>
-                          <span className="font-medium text-slate-300">Isı Gücü: %{m.effectivePct}</span>
+                        <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
+                          <span className="font-medium">Ana Vanalar ({m.openMainCount}/2 Açık)</span>
+                          <span className="font-bold text-slate-800">Isı Gücü: %{m.effectivePct}</span>
                         </div>
                         <div className="grid grid-cols-2 gap-1.5">
                           {([0, 1] as const).map((vIdx) => {
@@ -1639,17 +1601,19 @@ export default function App() {
                                 key={vIdx}
                                 type="button"
                                 onClick={() => handleToggleMainValve(room.id, vIdx)}
-                                className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-xs font-medium transition ${
+                                className={`flex items-center justify-between px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition ${
                                   isOpen
-                                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25'
-                                    : 'bg-rose-950/50 border-rose-800/50 text-rose-400 hover:bg-rose-900/40'
+                                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100'
+                                    : 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100'
                                 }`}
                               >
                                 <span className="flex items-center gap-1.5">
-                                  <span className={`w-2 h-2 rounded-full ${isOpen ? 'bg-emerald-400' : 'bg-rose-500'}`} />
+                                  <span className={`w-2 h-2 rounded-full ${isOpen ? 'bg-emerald-500' : 'bg-rose-500'}`} />
                                   <span>Ana Vana {vIdx + 1}</span>
                                 </span>
-                                <span className="text-[10px] font-bold uppercase">{isOpen ? 'AÇIK' : 'KAPALI'}</span>
+                                <span className="text-[10px] font-extrabold uppercase">
+                                  {isOpen ? 'AÇIK' : 'KAPALI'}
+                                </span>
                               </button>
                             );
                           })}
@@ -1658,9 +1622,9 @@ export default function App() {
 
                       {/* 5 Collectors */}
                       <div className="mt-3">
-                        <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
-                          <span>Kollektör Hatları ({m.openCollectorCount}/5 Açık)</span>
-                          <span className="text-[10px] text-slate-500">Tıkla Aç/Kapat</span>
+                        <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
+                          <span className="font-medium">Kollektör Hatları ({m.openCollectorCount}/5 Açık)</span>
+                          <span className="text-[10px] text-slate-400">Tıkla Aç/Kapat</span>
                         </div>
                         <div className="grid grid-cols-5 gap-1.5">
                           {([0, 1, 2, 3, 4] as const).map((cIdx) => {
@@ -1669,16 +1633,16 @@ export default function App() {
                             const restrictedFlow = cOpen && m.oneMainClosed;
 
                             let cStyle =
-                              'bg-slate-950 text-slate-500 border-slate-800 hover:bg-slate-800 hover:text-slate-300';
+                              'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200 hover:text-slate-700';
                             if (flowing) {
                               cStyle =
-                                'bg-orange-500 text-slate-950 border-orange-400 font-bold shadow-sm shadow-orange-500/20 hover:bg-orange-400';
+                                'bg-orange-500 text-white border-orange-500 font-bold shadow-sm shadow-orange-500/25 hover:bg-orange-600';
                             } else if (restrictedFlow) {
                               cStyle =
-                                'bg-amber-500/30 text-amber-200 border-amber-500/50 font-semibold hover:bg-amber-500/40';
+                                'bg-amber-100 text-amber-900 border-amber-300 font-semibold hover:bg-amber-200';
                             } else if (cOpen && m.allMainClosed) {
                               cStyle =
-                                'bg-slate-800 text-amber-300/80 border-amber-500/40 border-dashed hover:bg-slate-700';
+                                'bg-amber-50 text-amber-800 border-amber-300 border-dashed hover:bg-amber-100';
                             }
 
                             return (
@@ -1687,10 +1651,10 @@ export default function App() {
                                 type="button"
                                 onClick={() => handleToggleCollector(room.id, cIdx)}
                                 title={`${COLLECTOR_LABELS[cIdx]}: ${cOpen ? 'AÇIK' : 'KAPALI'}`}
-                                className={`flex flex-col items-center justify-center py-1.5 rounded-lg border text-xs transition ${cStyle}`}
+                                className={`flex flex-col items-center justify-center py-1.5 rounded-xl border text-xs transition ${cStyle}`}
                               >
-                                <span className="text-[11px] leading-none">K{cIdx + 1}</span>
-                                <span className="text-[9px] mt-0.5 opacity-85">{cOpen ? 'Açık' : 'Kapalı'}</span>
+                                <span className="text-[11px] leading-none font-bold">K{cIdx + 1}</span>
+                                <span className="text-[9px] mt-0.5 opacity-90">{cOpen ? 'Açık' : 'Kapalı'}</span>
                               </button>
                             );
                           })}
@@ -1699,8 +1663,8 @@ export default function App() {
 
                       {/* Room Note */}
                       {room.note && (
-                        <div className="mt-2.5 px-2.5 py-1.5 rounded-lg bg-slate-950/90 border border-slate-800/80 text-[11px] text-slate-300 line-clamp-2">
-                          <span className="text-amber-400 font-medium">Not:</span> {room.note}
+                        <div className="mt-2.5 px-2.5 py-1.5 rounded-xl bg-amber-50/80 border border-amber-200/80 text-[11px] text-slate-700 line-clamp-2">
+                          <span className="text-orange-600 font-bold">Not:</span> {room.note}
                         </div>
                       )}
 
@@ -1709,15 +1673,15 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => openRoomDetail(room, 'history')}
-                          className="mt-2 w-full text-left px-2.5 py-1.5 rounded-lg bg-slate-950/60 hover:bg-slate-800/80 border border-slate-800/90 transition group"
+                          className="mt-2 w-full text-left px-2.5 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 transition group"
                         >
-                          <div className="flex items-center justify-between text-[10px] text-slate-400">
-                            <span className="font-semibold text-sky-400 group-hover:underline">
+                          <div className="flex items-center justify-between text-[10px] text-slate-500">
+                            <span className="font-bold text-sky-700 group-hover:underline">
                               Son Kayıt ({latestHistory.dateLabel} {latestHistory.time})
                             </span>
-                            <span>{(room.history || []).length} kayıt →</span>
+                            <span className="font-semibold text-slate-600">{(room.history || []).length} kayıt →</span>
                           </div>
-                          <div className="text-[11px] text-slate-300 truncate mt-0.5">
+                          <div className="text-[11px] text-slate-700 truncate mt-0.5 font-medium">
                             {latestHistory.action}
                           </div>
                         </button>
@@ -1725,26 +1689,26 @@ export default function App() {
                     </div>
 
                     {/* Quick Footer Actions */}
-                    <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between gap-1">
+                    <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-1">
                       <div className="flex items-center gap-1">
                         <button
                           type="button"
                           onClick={() => handleQuickPreset(room.id, 'full')}
-                          className="px-2 py-1 rounded text-[10px] font-medium bg-slate-800 hover:bg-orange-500/20 text-slate-300 hover:text-orange-300 transition"
+                          className="px-2 py-1 rounded-lg text-[10px] font-semibold bg-slate-100 hover:bg-orange-100 text-slate-700 hover:text-orange-700 transition"
                         >
                           Tam Aç
                         </button>
                         <button
                           type="button"
                           onClick={() => handleQuickPreset(room.id, 'eco')}
-                          className="px-2 py-1 rounded text-[10px] font-medium bg-slate-800 hover:bg-amber-500/20 text-slate-300 hover:text-amber-300 transition"
+                          className="px-2 py-1 rounded-lg text-[10px] font-semibold bg-slate-100 hover:bg-amber-100 text-slate-700 hover:text-amber-800 transition"
                         >
                           3/5 Kıs
                         </button>
                         <button
                           type="button"
                           onClick={() => handleQuickPreset(room.id, 'close_main')}
-                          className="px-2 py-1 rounded text-[10px] font-medium bg-slate-800 hover:bg-rose-500/20 text-slate-300 hover:text-rose-300 transition"
+                          className="px-2 py-1 rounded-lg text-[10px] font-semibold bg-slate-100 hover:bg-rose-100 text-slate-700 hover:text-rose-700 transition"
                         >
                           Ana Vana Kapat
                         </button>
@@ -1752,7 +1716,7 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => openRoomDetail(room, 'history')}
-                        className="px-2 py-1 rounded text-[10px] font-semibold text-amber-400 hover:bg-amber-500/10 transition"
+                        className="px-2 py-1 rounded-lg text-[10px] font-bold text-orange-600 hover:bg-orange-50 transition"
                       >
                         Detay / Not ({(room.history || []).length})
                       </button>
@@ -1763,8 +1727,8 @@ export default function App() {
             </section>
 
             {filteredRooms.length === 0 && (
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-10 text-center space-y-3">
-                <p className="text-sm text-slate-300 font-medium">Seçilen filtreye uygun oda bulunamadı.</p>
+              <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center space-y-3 shadow-sm">
+                <p className="text-sm text-slate-600 font-medium">Seçilen filtreye uygun oda bulunamadı.</p>
                 <button
                   type="button"
                   onClick={() => {
@@ -1772,7 +1736,7 @@ export default function App() {
                     setOccupancyFilter('all');
                     setSearchQuery('');
                   }}
-                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 text-slate-950 hover:bg-amber-400 transition"
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-orange-500 text-white hover:bg-orange-600 transition"
                 >
                   Filtreleri Temizle
                 </button>
@@ -1780,12 +1744,12 @@ export default function App() {
             )}
           </>
         ) : (
-          /* GÜN GÜN ODA DEĞİŞİKLİK KAYITLARI (DAILY ROOM HISTORY VIEW) */
+          /* GÜN GÜN ODA DEĞİŞİKLİK KAYITLARI (DAILY ROOM HISTORY VIEW - LIGHT THEME) */
           <section className="space-y-4">
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
-                <h2 className="text-sm font-bold text-white">Oda İçi Gün Gün Değişiklik Kayıtları (101–120)</h2>
-                <p className="text-xs text-slate-400">
+                <h2 className="text-sm font-bold text-slate-900">Oda İçi Gün Gün Değişiklik Kayıtları (101–120)</h2>
+                <p className="text-xs text-slate-500">
                   Hangi gün, hangi odada, saat kaçta hangi vana veya kollektör değiştirildi detaylı listesi
                 </p>
               </div>
@@ -1793,7 +1757,7 @@ export default function App() {
                 <select
                   value={historyDateFilter}
                   onChange={(e) => setHistoryDateFilter(e.target.value)}
-                  className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                  className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-orange-500"
                 >
                   <option value="all">Tüm Günler</option>
                   {allRoomHistoryDates.map((d) => (
@@ -1806,7 +1770,7 @@ export default function App() {
                 <select
                   value={historyRoomFilter}
                   onChange={(e) => setHistoryRoomFilter(e.target.value)}
-                  className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                  className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-orange-500"
                 >
                   <option value="all">Tüm Odalar (101-120)</option>
                   {rooms.map((r) => (
@@ -1819,27 +1783,30 @@ export default function App() {
             </div>
 
             {groupedDailyRoomHistory.length === 0 ? (
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center text-xs text-slate-400">
+              <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-xs text-slate-500 shadow-sm">
                 Seçilen kriterlere uygun günlük oda kaydı bulunamadı.
               </div>
             ) : (
               groupedDailyRoomHistory.map((group) => (
-                <div key={group.dateIso} className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-                  <div className="bg-slate-950/80 px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+                <div
+                  key={group.dateIso}
+                  className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm"
+                >
+                  <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
-                      <h3 className="text-sm font-bold text-white">{group.dateLabel}</h3>
+                      <span className="w-2.5 h-2.5 rounded-full bg-orange-500" />
+                      <h3 className="text-sm font-bold text-slate-900">{group.dateLabel}</h3>
                       <span className="text-xs text-slate-500">({group.dateIso})</span>
                     </div>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300">
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-orange-50 text-orange-700 border border-orange-200">
                       {group.items.length} İşlem
                     </span>
                   </div>
-                  <div className="divide-y divide-slate-800/70">
+                  <div className="divide-y divide-slate-100">
                     {group.items.map((item) => (
                       <div
                         key={item.id}
-                        className="px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 hover:bg-slate-800/30 transition"
+                        className="px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 hover:bg-slate-50 transition"
                       >
                         <div className="flex items-start sm:items-center gap-3">
                           <button
@@ -1848,22 +1815,22 @@ export default function App() {
                               const r = rooms.find((rm) => rm.id === item.roomId);
                               if (r) openRoomDetail(r, 'history');
                             }}
-                            className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-bold text-xs shrink-0 transition"
+                            className="px-2.5 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 font-bold text-xs shrink-0 transition"
                           >
                             Oda {item.roomId}
                           </button>
                           <div>
-                            <div className="text-xs font-medium text-slate-100">{item.action}</div>
-                            <div className="text-[11px] text-slate-400 mt-0.5">
-                              Durum Özeti: <span className="text-slate-300">{item.summary}</span>
+                            <div className="text-xs font-semibold text-slate-900">{item.action}</div>
+                            <div className="text-[11px] text-slate-500 mt-0.5">
+                              Durum Özeti: <span className="text-slate-700 font-medium">{item.summary}</span>
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 sm:shrink-0 text-[11px] text-slate-400">
-                          <span className="px-2 py-0.5 rounded bg-slate-800 text-sky-300 font-medium">
+                        <div className="flex items-center gap-2 sm:shrink-0 text-[11px] text-slate-500">
+                          <span className="px-2 py-0.5 rounded-md bg-sky-50 text-sky-700 border border-sky-200 font-semibold">
                             {item.device}
                           </span>
-                          <span className="font-mono text-slate-300 font-semibold">{item.time}</span>
+                          <span className="font-mono text-slate-700 font-bold">{item.time}</span>
                         </div>
                       </div>
                     ))}
@@ -1875,35 +1842,35 @@ export default function App() {
         )}
       </main>
 
-      {/* Room Detail & Per-Room Daily History Modal */}
+      {/* Room Detail & Per-Room Daily History Modal (Light Theme) */}
       {selectedRoom && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-xl w-full overflow-hidden shadow-2xl">
-            <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-xl w-full overflow-hidden shadow-2xl">
+            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div>
-                <h2 className="text-base font-bold text-white">
+                <h2 className="text-base font-bold text-slate-900">
                   Oda {selectedRoom.id} — Vana Kontrolü &amp; Gün Gün Kayıtlar
                 </h2>
-                <p className="text-xs text-slate-400">Son değişiklik: {selectedRoom.updatedAt}</p>
+                <p className="text-xs text-slate-500">Son değişiklik: {selectedRoom.updatedAt}</p>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedRoomId(null)}
-                className="px-2.5 py-1 rounded-lg text-xs text-slate-400 hover:text-white hover:bg-slate-800"
+                className="px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-200"
               >
                 Kapat ✕
               </button>
             </div>
 
             {/* Modal Internal Tabs */}
-            <div className="px-5 pt-3 bg-slate-950/60 border-b border-slate-800 flex items-center gap-2">
+            <div className="px-5 pt-2 bg-white border-b border-slate-200 flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setModalTab('controls')}
-                className={`px-3.5 py-2 text-xs font-bold border-b-2 transition ${
+                className={`px-3.5 py-2.5 text-xs font-bold border-b-2 transition ${
                   modalTab === 'controls'
-                    ? 'border-amber-500 text-amber-400'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                    ? 'border-orange-500 text-orange-600'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
                 }`}
               >
                 Vana &amp; Kollektör Ayarları
@@ -1911,14 +1878,14 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setModalTab('history')}
-                className={`px-3.5 py-2 text-xs font-bold border-b-2 transition flex items-center gap-1.5 ${
+                className={`px-3.5 py-2.5 text-xs font-bold border-b-2 transition flex items-center gap-1.5 ${
                   modalTab === 'history'
-                    ? 'border-amber-500 text-amber-400'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                    ? 'border-orange-500 text-orange-600'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
                 }`}
               >
                 <span>Oda İçi Gün Gün Geçmiş</span>
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500/20 text-amber-300">
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-orange-100 text-orange-700">
                   {(selectedRoom.history || []).length}
                 </span>
               </button>
@@ -1926,16 +1893,16 @@ export default function App() {
 
             {modalTab === 'controls' ? (
               <div className="p-5 space-y-5 max-h-[75vh] overflow-y-auto">
-                <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-950 p-3 rounded-xl border border-slate-800">
+                <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-400">Oda Durumu:</span>
+                    <span className="text-xs font-medium text-slate-600">Oda Durumu:</span>
                     <button
                       type="button"
                       onClick={() => handleToggleOccupancy(selectedRoom.id)}
-                      className={`px-2.5 py-1 rounded-md text-xs font-semibold border transition ${
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition ${
                         selectedRoom.occupied
-                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                          : 'bg-slate-800 text-slate-300 border-slate-700'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                          : 'bg-white text-slate-600 border-slate-300'
                       }`}
                     >
                       {selectedRoom.occupied ? 'Müşteri Var (DOLU)' : 'Oda Boş (BOŞ)'}
@@ -1945,21 +1912,21 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => handleQuickPreset(selectedRoom.id, 'full')}
-                      className="px-2.5 py-1 rounded text-xs font-medium bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 border border-orange-500/30 transition"
+                      className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-orange-50 text-orange-700 hover:bg-orange-100 border border-orange-200 transition"
                     >
                       Tam Aç (2V + 5K)
                     </button>
                     <button
                       type="button"
                       onClick={() => handleQuickPreset(selectedRoom.id, 'eco')}
-                      className="px-2.5 py-1 rounded text-xs font-medium bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/30 transition"
+                      className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200 transition"
                     >
                       Kısık Mod (3/5 K)
                     </button>
                     <button
                       type="button"
                       onClick={() => handleQuickPreset(selectedRoom.id, 'close_main')}
-                      className="px-2.5 py-1 rounded text-xs font-medium bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 border border-rose-500/30 transition"
+                      className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition"
                     >
                       Ana Vanayı Kapat
                     </button>
@@ -1968,7 +1935,7 @@ export default function App() {
 
                 {/* 2 Main Valves */}
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
                     Ana Vanalar (2 Adet - Oda Ana Giriş &amp; Dönüş)
                   </label>
                   <div className="grid grid-cols-2 gap-3">
@@ -1982,21 +1949,21 @@ export default function App() {
                           onClick={() => handleToggleMainValve(selectedRoom.id, vIdx)}
                           className={`p-3 rounded-xl border text-left flex items-center justify-between transition ${
                             isOpen
-                              ? 'border-emerald-500/40 bg-emerald-500/15'
-                              : 'border-rose-500/40 bg-rose-950/40'
+                              ? 'border-emerald-300 bg-emerald-50'
+                              : 'border-rose-200 bg-rose-50'
                           }`}
                         >
                           <div>
-                            <div className={`text-xs font-bold ${isOpen ? 'text-emerald-300' : 'text-rose-300'}`}>
+                            <div className={`text-xs font-bold ${isOpen ? 'text-emerald-800' : 'text-rose-800'}`}>
                               {label}
                             </div>
-                            <div className="text-[11px] text-slate-400 mt-0.5">
+                            <div className="text-[11px] text-slate-500 mt-0.5">
                               {isOpen ? 'Su geçişi aktif' : 'Vana kapalı'}
                             </div>
                           </div>
                           <span
                             className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                              isOpen ? 'bg-emerald-500 text-slate-950' : 'bg-rose-500 text-white'
+                              isOpen ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
                             }`}
                           >
                             {isOpen ? 'AÇIK' : 'KAPALI'}
@@ -2010,10 +1977,10 @@ export default function App() {
                 {/* 5 Collectors */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
                       Kollektör Hatları (5 Adet)
                     </label>
-                    <span className="text-xs font-medium text-amber-400">
+                    <span className="text-xs font-bold text-orange-600">
                       {selectedRoom.collectors.filter(Boolean).length} / 5 Kollektör Açık
                     </span>
                   </div>
@@ -2023,18 +1990,18 @@ export default function App() {
                       return (
                         <div
                           key={cIdx}
-                          className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between"
+                          className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between"
                         >
                           <div className="flex items-center gap-2.5">
                             <span
                               className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold ${
-                                cOpen ? 'bg-orange-500 text-slate-950' : 'bg-slate-800 text-slate-500'
+                                cOpen ? 'bg-orange-500 text-white' : 'bg-slate-200 text-slate-600'
                               }`}
                             >
                               K{cIdx + 1}
                             </span>
                             <div>
-                              <div className="text-xs font-medium text-slate-200">{COLLECTOR_LABELS[cIdx]}</div>
+                              <div className="text-xs font-semibold text-slate-800">{COLLECTOR_LABELS[cIdx]}</div>
                               <div className="text-[10px] text-slate-500">
                                 {cOpen ? 'Mandal Açık (%20 Kapasite)' : 'Mandal Kapalı'}
                               </div>
@@ -2045,8 +2012,8 @@ export default function App() {
                             onClick={() => handleToggleCollector(selectedRoom.id, cIdx)}
                             className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
                               cOpen
-                                ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30 hover:bg-orange-500/30'
-                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                                ? 'bg-orange-100 text-orange-800 border border-orange-300 hover:bg-orange-200'
+                                : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
                             }`}
                           >
                             {cOpen ? 'Açık (Kapat)' : 'Kapalı (Aç)'}
@@ -2059,7 +2026,7 @@ export default function App() {
 
                 {/* Note */}
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
                     Oda Güncel Notu
                   </label>
                   <textarea
@@ -2067,7 +2034,7 @@ export default function App() {
                     value={modalNote}
                     onChange={(e) => setModalNote(e.target.value)}
                     placeholder="Örn: Müşteri çok sıcak dediği için 2 kollektör kapatıldı..."
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-orange-500 focus:bg-white"
                   />
                 </div>
               </div>
@@ -2080,11 +2047,11 @@ export default function App() {
                     value={customHistoryEntry}
                     onChange={(e) => setCustomHistoryEntry(e.target.value)}
                     placeholder="Bu oda için yeni günlük kontrol/bakım notu ekle..."
-                    className="flex-1 px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    className="flex-1 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-orange-500 focus:bg-white"
                   />
                   <button
                     type="submit"
-                    className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 shrink-0 transition"
+                    className="px-3.5 py-2 rounded-xl text-xs font-bold bg-orange-500 hover:bg-orange-600 text-white shrink-0 transition"
                   >
                     Kayda Ekle
                   </button>
@@ -2097,21 +2064,23 @@ export default function App() {
                     {selectedRoomHistoryByDay.map((dayGroup) => (
                       <div
                         key={dayGroup.dateIso}
-                        className="border border-slate-800 rounded-xl overflow-hidden bg-slate-950/60"
+                        className="border border-slate-200 rounded-xl overflow-hidden bg-white"
                       >
-                        <div className="px-3.5 py-2 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
-                          <span className="text-xs font-bold text-amber-400">{dayGroup.dateLabel}</span>
-                          <span className="text-[11px] text-slate-400">{dayGroup.items.length} değişiklik</span>
+                        <div className="px-3.5 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                          <span className="text-xs font-bold text-orange-600">{dayGroup.dateLabel}</span>
+                          <span className="text-[11px] font-medium text-slate-500">
+                            {dayGroup.items.length} değişiklik
+                          </span>
                         </div>
-                        <div className="divide-y divide-slate-800/60">
+                        <div className="divide-y divide-slate-100">
                           {dayGroup.items.map((h) => (
                             <div key={h.id} className="p-3 space-y-1">
                               <div className="flex items-center justify-between text-[11px]">
-                                <span className="font-semibold text-sky-300">{h.device}</span>
-                                <span className="font-mono text-slate-400">{h.time}</span>
+                                <span className="font-bold text-sky-700">{h.device}</span>
+                                <span className="font-mono font-semibold text-slate-500">{h.time}</span>
                               </div>
-                              <div className="text-xs text-slate-100 font-medium">{h.action}</div>
-                              <div className="text-[11px] text-slate-400">{h.summary}</div>
+                              <div className="text-xs text-slate-900 font-semibold">{h.action}</div>
+                              <div className="text-[11px] text-slate-500">{h.summary}</div>
                             </div>
                           ))}
                         </div>
@@ -2122,14 +2091,14 @@ export default function App() {
               </div>
             )}
 
-            <div className="px-5 py-3.5 bg-slate-950 border-t border-slate-800 flex items-center justify-between gap-2">
-              <span className="text-[11px] text-slate-400">
+            <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2">
+              <span className="text-[11px] text-slate-500">
                 Her vana/kollektör değişimi otomatik olarak gün ve saatiyle kaydedilir.
               </span>
               <button
                 type="button"
                 onClick={handleSaveModalNote}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 transition"
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-orange-500 hover:bg-orange-600 text-white transition"
               >
                 Notu Kaydet & Kapat
               </button>
@@ -2138,49 +2107,46 @@ export default function App() {
         </div>
       )}
 
-      {/* Automatic Firebase Config Modal */}
+      {/* Firebase Status & Device Modal (Light Theme) */}
       {isSyncModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl">
-            <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl">
+            <div className="px-5 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
               <div>
-                <h2 className="text-base font-bold text-white">Telefon ↔ Bilgisayar Bağlama Rehberi</h2>
-                <p className="text-xs text-slate-400">
-                  Telefonda ve bilgisayarda aynı anda otomatik değişmesi için 2 kolay yöntem
+                <h2 className="text-base font-bold text-slate-900">
+                  Firebase (doors-panel) &amp; Cihaz Ayarları
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Projeniz (`doors-panel`) doğrudan koda entegre edildi ve aktif
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsSyncModalOpen(false)}
-                className="px-2.5 py-1 rounded-lg text-xs text-slate-400 hover:text-white hover:bg-slate-800"
+                className="px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-200"
               >
                 Kapat ✕
               </button>
             </div>
 
             <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
-              <div className="p-3.5 rounded-xl bg-slate-950 border border-amber-500/30 space-y-2">
-                <div className="text-xs font-bold text-amber-400">
-                  Neden eski panelinizde çalışıyordu da şimdi bağlamak gerekiyor?
+              <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-emerald-800">
+                    Firebase Projesi Bağlı: doors-panel
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-200 text-emerald-900">
+                    Firestore REST Aktif
+                  </span>
                 </div>
-                <p className="text-[11px] text-slate-300 leading-relaxed">
-                  Eski <code className="text-amber-300">app/page.tsx</code> dosyanızı sildiğinizde, o dosyanın içindeki <strong>Firebase adresiniz (projectId / databaseURL)</strong> de silindi. GitHub&apos;da deponuzun <strong>Commits (Geçmiş)</strong> bölümünden eski <code className="text-amber-300">page.tsx</code> dosyanıza bakıp içindeki <code className="text-emerald-300">projectId</code> veya <code className="text-emerald-300">firebaseConfig</code> bilgisini aşağıya yapıştırabilirsiniz:
-                </p>
-                <textarea
-                  rows={3}
-                  value={quickConnectInput}
-                  onChange={(e) => setQuickConnectInput(e.target.value)}
-                  placeholder='Eski kodunuzdaki projectId (örn: otel-takip-123) veya firebaseConfig bloğunu buraya yapıştırın...'
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
-                />
-                <p className="text-[11px] text-slate-400">
-                  <strong>Kalıcı Çözüm:</strong> Bu bilgiyi kodun en üstündeki <strong>26. satırda</strong> bulunan <code className="text-amber-300">DEFAULT_FIREBASE_CONFIG</code> içine yazıp GitHub&apos;a kaydederseniz, telefon ve bilgisayarınızda hiçbir ayar yapmanıza gerek kalmadan doğrudan birbirine bağlanır!
+                <p className="text-[11px] text-emerald-900/80 leading-relaxed">
+                  Gönderdiğiniz <code className="font-mono font-bold">doors-panel</code> API anahtarı ve proje bilgileri doğrudan koda gömüldü. Telefonda veya bilgisayarda vanaya tıkladığınız anda otomatik olarak tüm cihazlarda güncellenir.
                 </p>
               </div>
 
               {/* Device Name */}
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
                   Bu Cihazın Adı (Oda Geçmişinde Kim Değiştirdi Görünmesi İçin)
                 </label>
                 <div className="flex flex-wrap gap-1.5 mb-2">
@@ -2189,10 +2155,10 @@ export default function App() {
                       key={preset}
                       type="button"
                       onClick={() => setDeviceName(preset)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition ${
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition ${
                         deviceName === preset
-                          ? 'bg-amber-500 text-slate-950 border-amber-400 font-semibold'
-                          : 'bg-slate-950 text-slate-300 border-slate-800 hover:bg-slate-800'
+                          ? 'bg-orange-500 text-white border-orange-500'
+                          : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                       }`}
                     >
                       {preset}
@@ -2204,21 +2170,21 @@ export default function App() {
                   value={deviceName}
                   onChange={(e) => setDeviceName(e.target.value)}
                   placeholder="Örn: Telefon"
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-100 focus:outline-none focus:border-amber-500"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-orange-500"
                 />
               </div>
 
               {/* Manual Backup Export/Import */}
-              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex flex-wrap items-center justify-between gap-2">
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={handleExportJsonBackup}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30 transition"
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200 transition"
                   >
                     Yedek İndir (.json)
                   </button>
-                  <label className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700 cursor-pointer transition">
+                  <label className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-slate-700 border border-slate-300 hover:bg-slate-100 cursor-pointer transition">
                     <span>Yedek Yükle (.json)</span>
                     <input type="file" accept=".json" onChange={handleImportJsonBackup} className="hidden" />
                   </label>
@@ -2226,22 +2192,22 @@ export default function App() {
                 <button
                   type="button"
                   onClick={handleResetDemo}
-                  className="px-2.5 py-1.5 rounded-lg text-xs text-rose-400 hover:bg-rose-950/50 transition"
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-600 hover:bg-rose-50 transition"
                 >
                   Varsayılana Sıfırla
                 </button>
               </div>
             </div>
 
-            <div className="px-5 py-3.5 bg-slate-950 border-t border-slate-800 flex items-center justify-end gap-2">
+            <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => {
                   handleSaveCloudConfig(quickConnectInput, deviceName);
                   setIsSyncModalOpen(false);
-                  showToast('Bağlantı ayarları kaydedildi');
+                  showToast('Ayarlar kaydedildi');
                 }}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 transition"
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-orange-500 hover:bg-orange-600 text-white transition"
               >
                 Tamam
               </button>
@@ -2250,89 +2216,89 @@ export default function App() {
         </div>
       )}
 
-      {/* Bulk Operations Modal */}
+      {/* Bulk Operations Modal (Light Theme) */}
       {isBulkOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full overflow-hidden shadow-2xl">
-            <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
-              <h2 className="text-base font-bold text-white">Toplu Vana &amp; Kollektör İşlemleri</h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full overflow-hidden shadow-2xl">
+            <div className="px-5 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+              <h2 className="text-base font-bold text-slate-900">Toplu Vana &amp; Kollektör İşlemleri</h2>
               <button
                 type="button"
                 onClick={() => setIsBulkOpen(false)}
-                className="px-2.5 py-1 rounded-lg text-xs text-slate-400 hover:text-white hover:bg-slate-800"
+                className="px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-200"
               >
                 Kapat ✕
               </button>
             </div>
             <div className="p-5 space-y-3">
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-600">
                 Hazır senaryolarla tüm odaları (101–120) veya sadece boş odaları tek tıkla ayarlayabilirsiniz:
               </p>
               <button
                 type="button"
                 onClick={() => handleBulkAction('all_full')}
-                className="w-full text-left p-3 rounded-xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 flex items-center justify-between transition"
+                className="w-full text-left p-3.5 rounded-xl bg-orange-50/70 hover:bg-orange-100/80 border border-orange-200 flex items-center justify-between transition"
               >
                 <div>
-                  <div className="text-xs font-semibold text-orange-400">Tüm Odaları Tam Isıtmaya Al (101-120)</div>
-                  <div className="text-[11px] text-slate-400">2 Ana Vana Açık + 5/5 Kollektör Açık (%100)</div>
+                  <div className="text-xs font-bold text-orange-800">Tüm Odaları Tam Isıtmaya Al (101-120)</div>
+                  <div className="text-[11px] text-slate-600">2 Ana Vana Açık + 5/5 Kollektör Açık (%100)</div>
                 </div>
-                <span className="text-xs font-bold text-orange-400">Uygula →</span>
+                <span className="text-xs font-bold text-orange-600">Uygula →</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => handleBulkAction('empty_eco')}
-                className="w-full text-left p-3 rounded-xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 flex items-center justify-between transition"
+                className="w-full text-left p-3.5 rounded-xl bg-amber-50/70 hover:bg-amber-100/80 border border-amber-200 flex items-center justify-between transition"
               >
                 <div>
-                  <div className="text-xs font-semibold text-amber-400">Boş Odalarda 2 Kollektörü Kapat (Tasarruf)</div>
-                  <div className="text-[11px] text-slate-400">Boş odalarda Ana Vanalar Açık, 3/5 Kollektör Açık (%60)</div>
+                  <div className="text-xs font-bold text-amber-900">Boş Odalarda 2 Kollektörü Kapat (Tasarruf)</div>
+                  <div className="text-[11px] text-slate-600">Boş odalarda Ana Vanalar Açık, 3/5 Kollektör Açık (%60)</div>
                 </div>
-                <span className="text-xs font-bold text-amber-400">Uygula →</span>
+                <span className="text-xs font-bold text-amber-700">Uygula →</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => handleBulkAction('empty_main_off')}
-                className="w-full text-left p-3 rounded-xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 flex items-center justify-between transition"
+                className="w-full text-left p-3.5 rounded-xl bg-rose-50/70 hover:bg-rose-100/80 border border-rose-200 flex items-center justify-between transition"
               >
                 <div>
-                  <div className="text-xs font-semibold text-rose-400">Boş Odaların Ana Vanalarını Kapat</div>
-                  <div className="text-[11px] text-slate-400">Boş odalarda 2 Ana Vana Kapatılır (%0 Isı)</div>
+                  <div className="text-xs font-bold text-rose-800">Boş Odaların Ana Vanalarını Kapat</div>
+                  <div className="text-[11px] text-slate-600">Boş odalarda 2 Ana Vana Kapatılır (%0 Isı)</div>
                 </div>
-                <span className="text-xs font-bold text-rose-400">Uygula →</span>
+                <span className="text-xs font-bold text-rose-600">Uygula →</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => handleBulkAction('all_main_off')}
-                className="w-full text-left p-3 rounded-xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 flex items-center justify-between transition"
+                className="w-full text-left p-3.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 flex items-center justify-between transition"
               >
                 <div>
-                  <div className="text-xs font-semibold text-slate-300">Tüm Otelin Ana Vanalarını Kapat</div>
-                  <div className="text-[11px] text-slate-400">101-120 tüm ana vanaları kapatır</div>
+                  <div className="text-xs font-bold text-slate-800">Tüm Otelin Ana Vanalarını Kapat</div>
+                  <div className="text-[11px] text-slate-500">101-120 tüm ana vanaları kapatır</div>
                 </div>
-                <span className="text-xs font-bold text-slate-400">Uygula →</span>
+                <span className="text-xs font-bold text-slate-600">Uygula →</span>
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Activity Log Drawer */}
+      {/* Activity Log Drawer (Light Theme) */}
       {isLogOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/75 backdrop-blur-sm">
-          <div className="bg-slate-900 border-l border-slate-800 w-full max-w-md h-full flex flex-col shadow-2xl">
-            <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/40 backdrop-blur-sm">
+          <div className="bg-white border-l border-slate-200 w-full max-w-md h-full flex flex-col shadow-2xl">
+            <div className="px-5 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
               <div>
-                <h2 className="text-base font-bold text-white">Genel Hareket Kayıtları</h2>
-                <p className="text-xs text-slate-400">Tarih, saat ve cihaz bilgisiyle tüm işlemler</p>
+                <h2 className="text-base font-bold text-slate-900">Genel Hareket Kayıtları</h2>
+                <p className="text-xs text-slate-500">Tarih, saat ve cihaz bilgisiyle tüm işlemler</p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsLogOpen(false)}
-                className="px-2.5 py-1 rounded-lg text-xs text-slate-400 hover:text-white hover:bg-slate-800"
+                className="px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-200"
               >
                 Kapat ✕
               </button>
@@ -2344,22 +2310,22 @@ export default function App() {
                 logs.map((item) => (
                   <div
                     key={item.id}
-                    className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs space-y-1"
+                    className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="inline-block px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 font-bold text-[10px]">
+                      <span className="inline-block px-2 py-0.5 rounded-md bg-orange-100 text-orange-800 font-bold text-[10px]">
                         Oda {item.room}
                       </span>
-                      <span className="text-[10px] text-slate-400">
-                        {item.dateLabel} • <strong className="text-slate-200">{item.time}</strong> ({item.device})
+                      <span className="text-[10px] text-slate-500">
+                        {item.dateLabel} • <strong className="text-slate-800">{item.time}</strong> ({item.device})
                       </span>
                     </div>
-                    <div className="text-slate-200">{item.msg}</div>
+                    <div className="text-slate-800 font-medium">{item.msg}</div>
                   </div>
                 ))
               )}
             </div>
-            <div className="p-4 border-t border-slate-800 bg-slate-950 flex items-center justify-between">
+            <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
               <button
                 type="button"
                 onClick={() => {
@@ -2369,7 +2335,7 @@ export default function App() {
                   persistLocalAndBroadcast(roomsRef.current, [], nowTs);
                   showToast('Genel hareket kayıtları temizlendi');
                 }}
-                className="text-xs text-rose-400 hover:text-rose-300 font-medium"
+                className="text-xs text-rose-600 hover:text-rose-700 font-semibold"
               >
                 Kayıtları Temizle
               </button>
@@ -2381,8 +2347,8 @@ export default function App() {
 
       {/* Toast */}
       {toastText && (
-        <div className="fixed bottom-4 right-4 z-50 bg-slate-800 border border-amber-500/40 text-slate-100 px-3.5 py-2 rounded-xl shadow-lg text-xs font-medium flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+        <div className="fixed bottom-4 right-4 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-lg text-xs font-medium flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-orange-400 shrink-0" />
           <span>{toastText}</span>
         </div>
       )}
