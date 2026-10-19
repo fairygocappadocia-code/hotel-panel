@@ -2,6 +2,33 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 
+// ============================================================================
+// OTOMATİK FIREBASE BAĞLANTISI
+// Projenizde .env (NEXT_PUBLIC_FIREBASE_PROJECT_ID veya DATABASE_URL) varsa
+// otomatik bağlanır. Yoksa aşağıdaki tırnakların içine kendi Firebase
+// projectId veya databaseURL bilginizi yazabilirsiniz:
+// ============================================================================
+const ENV_PROJECT_ID =
+  typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    ? process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    : '';
+
+const ENV_DATABASE_URL =
+  typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL
+    ? process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL
+    : '';
+
+const ENV_API_KEY =
+  typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_FIREBASE_API_KEY
+    ? process.env.NEXT_PUBLIC_FIREBASE_API_KEY
+    : '';
+
+const DEFAULT_FIREBASE_CONFIG = {
+  projectId: ENV_PROJECT_ID || '', // Örn: 'otel-takip-12345'
+  databaseURL: ENV_DATABASE_URL || '', // Örn: 'https://otel-takip-12345-default-rtdb.firebaseio.com'
+  apiKey: ENV_API_KEY || '',
+};
+
 interface RoomHistoryItem {
   id: string;
   dateIso: string; // YYYY-MM-DD
@@ -81,6 +108,82 @@ function formatValvesSummary(mainValves: [boolean, boolean], collectors: [boolea
   const openCol = collectors.filter(Boolean).length;
   const pct = openMain === 2 ? openCol * 20 : openMain === 1 ? Math.round(openCol * 10) : 0;
   return `${openMain}/2 Ana Vana • ${openCol}/5 Kollektör (%${pct} Isı)`;
+}
+
+// Parse pasted firebaseConfig snippet, projectId, or databaseURL automatically
+function parseFirebaseInput(raw: string): { mode: 'rtdb' | 'firestore' | 'none'; endpoint: string; label: string } {
+  const text = (raw || '').trim();
+  if (!text) {
+    if (DEFAULT_FIREBASE_CONFIG.databaseURL) {
+      const clean = DEFAULT_FIREBASE_CONFIG.databaseURL.replace(/\/+$/, '');
+      return {
+        mode: 'rtdb',
+        endpoint: clean.endsWith('.json') ? clean : `${clean}/otel_yerden_isitma_v2.json`,
+        label: 'Firebase Realtime DB (.env)',
+      };
+    }
+    if (DEFAULT_FIREBASE_CONFIG.projectId) {
+      const pid = DEFAULT_FIREBASE_CONFIG.projectId.trim();
+      const keyParam = DEFAULT_FIREBASE_CONFIG.apiKey ? `?key=${encodeURIComponent(DEFAULT_FIREBASE_CONFIG.apiKey)}` : '';
+      return {
+        mode: 'firestore',
+        endpoint: `https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/otel_takip/yerden_isitma_v2${keyParam}`,
+        label: `Firebase Firestore (${pid})`,
+      };
+    }
+    return { mode: 'none', endpoint: '', label: '' };
+  }
+
+  // Check if user pasted a full firebaseConfig object
+  const dbUrlMatch = text.match(/https:\/\/[a-zA-Z0-9-]+(?:-[a-zA-Z0-9-]+)*\.(?:firebaseio\.com|firebasedatabase\.app)[^\s"']*/);
+  if (dbUrlMatch) {
+    const clean = dbUrlMatch[0].replace(/\/+$/, '');
+    return {
+      mode: 'rtdb',
+      endpoint: clean.endsWith('.json') ? clean : `${clean}/otel_yerden_isitma_v2.json`,
+      label: 'Firebase Realtime DB',
+    };
+  }
+
+  const projectIdMatch = text.match(/projectId\s*:\s*["']([^"']+)["']/);
+  const apiKeyMatch = text.match(/apiKey\s*:\s*["']([^"']+)["']/);
+  if (projectIdMatch) {
+    const pid = projectIdMatch[1].trim();
+    const keyParam = apiKeyMatch ? `?key=${encodeURIComponent(apiKeyMatch[1].trim())}` : '';
+    return {
+      mode: 'firestore',
+      endpoint: `https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/otel_takip/yerden_isitma_v2${keyParam}`,
+      label: `Firebase Firestore (${pid})`,
+    };
+  }
+
+  // If it's a direct http(s) URL
+  if (text.startsWith('http://') || text.startsWith('https://')) {
+    const clean = text.replace(/\/+$/, '');
+    if (clean.includes('firebaseio.com') || clean.includes('firebasedatabase.app')) {
+      return {
+        mode: 'rtdb',
+        endpoint: clean.endsWith('.json') ? clean : `${clean}/otel_yerden_isitma_v2.json`,
+        label: 'Firebase Realtime DB',
+      };
+    }
+    if (clean.includes('firestore.googleapis.com')) {
+      return { mode: 'firestore', endpoint: clean, label: 'Firebase Firestore' };
+    }
+    return { mode: 'rtdb', endpoint: clean, label: 'Bulut Servisi' };
+  }
+
+  // Otherwise treat plain string as Firebase projectId (e.g. "otel-takip-12345")
+  const cleanPid = text.replace(/[^a-zA-Z0-9-_]/g, '');
+  if (cleanPid.length >= 4) {
+    return {
+      mode: 'firestore',
+      endpoint: `https://firestore.googleapis.com/v1/projects/${cleanPid}/databases/(default)/documents/otel_takip/yerden_isitma_v2`,
+      label: `Firebase (${cleanPid})`,
+    };
+  }
+
+  return { mode: 'none', endpoint: '', label: '' };
 }
 
 function createDefaultRooms(): Room[] {
@@ -332,9 +435,11 @@ export default function App() {
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [toastText, setToastText] = useState<string | null>(null);
 
-  // Cross-Device Cloud Sync states (Phone <-> PC)
-  const [deviceName, setDeviceName] = useState<string>('Telefon (Yönetici)');
-  const [cloudUrl, setCloudUrl] = useState<string>('');
+  // Automatic Firebase Sync States
+  const [deviceName, setDeviceName] = useState<string>('Mobil / PC');
+  const [cloudUrl, setCloudUrl] = useState<string>(
+    DEFAULT_FIREBASE_CONFIG.databaseURL || DEFAULT_FIREBASE_CONFIG.projectId || ''
+  );
   const [syncStatus, setSyncStatus] = useState<'local' | 'synced' | 'syncing' | 'error'>('local');
   const [lastSyncedAt, setLastSyncedAt] = useState<string>('--:--');
   const lastUpdatedTimestampRef = useRef<number>(0);
@@ -347,37 +452,45 @@ export default function App() {
     }, 2600);
   }, []);
 
-  // Normalize Firebase or REST URL
-  const getNormalizedCloudEndpoint = useCallback((rawUrl: string) => {
-    const trimmed = rawUrl.trim().replace(/\/+$/, '');
-    if (!trimmed) return '';
-    if (trimmed.includes('firebaseio.com') || trimmed.includes('firebasedatabase.app')) {
-      return trimmed.endsWith('.json') ? trimmed : `${trimmed}/otel_yerden_isitma_v2.json`;
-    }
-    return trimmed;
-  }, []);
+  const resolvedFirebase = useMemo(() => parseFirebaseInput(cloudUrl), [cloudUrl]);
 
-  // Push state to Cloud DB (if configured)
+  // Automatic background push to Firebase (supports both Firestore & Realtime DB)
   const pushToCloud = useCallback(
-    async (nextRooms: Room[], nextLogs: LogEntry[], customUrl?: string) => {
-      const targetUrl = getNormalizedCloudEndpoint(customUrl !== undefined ? customUrl : cloudUrl);
-      if (!targetUrl) return;
+    async (nextRooms: Room[], nextLogs: LogEntry[], customInput?: string) => {
+      const target = customInput !== undefined ? parseFirebaseInput(customInput) : resolvedFirebase;
+      if (target.mode === 'none' || !target.endpoint) return;
 
       setSyncStatus('syncing');
       const nowTs = Date.now();
       lastUpdatedTimestampRef.current = nowTs;
+      const payloadObj = {
+        updatedAtTs: nowTs,
+        updatedBy: deviceName,
+        rooms: nextRooms,
+        logs: nextLogs,
+      };
 
       try {
-        const res = await fetch(targetUrl, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            updatedAtTs: nowTs,
-            updatedBy: deviceName,
-            rooms: nextRooms,
-            logs: nextLogs,
-          }),
-        });
+        let res: Response;
+        if (target.mode === 'firestore') {
+          res = await fetch(target.endpoint, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fields: {
+                payload: { stringValue: JSON.stringify(payloadObj) },
+                updatedAtTs: { integerValue: String(nowTs) },
+              },
+            }),
+          });
+        } else {
+          res = await fetch(target.endpoint, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payloadObj),
+          });
+        }
+
         if (res.ok) {
           setSyncStatus('synced');
           setLastSyncedAt(getNowTimeStr());
@@ -388,23 +501,40 @@ export default function App() {
         setSyncStatus('error');
       }
     },
-    [cloudUrl, deviceName, getNormalizedCloudEndpoint]
+    [deviceName, resolvedFirebase]
   );
 
-  // Pull state from Cloud DB (for live Phone <-> PC sync)
+  // Automatic background pull from Firebase (every 2.5s + on window focus)
   const pullFromCloud = useCallback(
-    async (silent = true, customUrl?: string) => {
-      const targetUrl = getNormalizedCloudEndpoint(customUrl !== undefined ? customUrl : cloudUrl);
-      if (!targetUrl) return;
+    async (silent = true, customInput?: string) => {
+      const target = customInput !== undefined ? parseFirebaseInput(customInput) : resolvedFirebase;
+      if (target.mode === 'none' || !target.endpoint) return;
 
       if (!silent) setSyncStatus('syncing');
       try {
-        const res = await fetch(targetUrl, { cache: 'no-store' });
+        const res = await fetch(target.endpoint, { cache: 'no-store' });
+        if (res.status === 404 && target.mode === 'firestore') {
+          // Document doesn't exist in Firestore yet -> auto-create it immediately!
+          await pushToCloud(rooms, logs, customInput);
+          return;
+        }
         if (!res.ok) {
           setSyncStatus('error');
           return;
         }
-        const data = await res.json();
+        const raw = await res.json();
+        let data = raw;
+
+        if (target.mode === 'firestore') {
+          const strVal = raw?.fields?.payload?.stringValue;
+          if (strVal) {
+            data = JSON.parse(strVal);
+          } else {
+            await pushToCloud(rooms, logs, customInput);
+            return;
+          }
+        }
+
         if (data && Array.isArray(data.rooms)) {
           const remoteTs = Number(data.updatedAtTs || 0);
           if (remoteTs > lastUpdatedTimestampRef.current) {
@@ -416,21 +546,23 @@ export default function App() {
           }
           setSyncStatus('synced');
           setLastSyncedAt(getNowTimeStr());
-          if (!silent) showToast('Bulut verileriyle eşitlendi');
+          if (!silent) showToast('Canlı Firebase verisi güncellendi');
         } else if (data === null) {
-          // Empty cloud DB -> initialize it with current local state
-          await pushToCloud(rooms, logs, targetUrl);
+          await pushToCloud(rooms, logs, customInput);
         }
       } catch {
         setSyncStatus('error');
       }
     },
-    [cloudUrl, getNormalizedCloudEndpoint, logs, pushToCloud, rooms, showToast]
+    [logs, pushToCloud, resolvedFirebase, rooms, showToast]
   );
 
-  // Load saved state from localStorage on client mount
+  // Detect device type automatically (Telefon vs Bilgisayar) and load saved state
   useEffect(() => {
     try {
+      const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+      setDeviceName(isMobile ? 'Telefon' : 'Bilgisayar');
+
       const savedRooms = localStorage.getItem(STORAGE_KEY);
       if (savedRooms) {
         const parsed = JSON.parse(savedRooms);
@@ -454,7 +586,7 @@ export default function App() {
       if (savedSync) {
         const cfg = JSON.parse(savedSync);
         if (cfg.deviceName) setDeviceName(cfg.deviceName);
-        if (cfg.cloudUrl) {
+        if (cfg.cloudUrl && !DEFAULT_FIREBASE_CONFIG.databaseURL && !DEFAULT_FIREBASE_CONFIG.projectId) {
           setCloudUrl(cfg.cloudUrl);
         }
       }
@@ -464,7 +596,7 @@ export default function App() {
     isInitialMountRef.current = false;
   }, []);
 
-  // Save state to localStorage & multi-tab BroadcastChannel
+  // Save state to localStorage automatically
   useEffect(() => {
     if (isInitialMountRef.current) return;
     try {
@@ -485,7 +617,7 @@ export default function App() {
     }
   }, [deviceName, cloudUrl]);
 
-  // Listen to storage events across browser tabs + poll Cloud URL every 4 seconds
+  // Automatic real-time listener (every 2.5 seconds + instant on focus/visibility)
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
       try {
@@ -501,23 +633,33 @@ export default function App() {
     };
     window.addEventListener('storage', handleStorageChange);
 
+    const handleFocus = () => {
+      if (resolvedFirebase.mode !== 'none') {
+        pullFromCloud(true);
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+
     let intervalId: ReturnType<typeof setInterval> | null = null;
-    if (cloudUrl.trim() !== '') {
+    if (resolvedFirebase.mode !== 'none') {
       pullFromCloud(true);
       intervalId = setInterval(() => {
         pullFromCloud(true);
-      }, 4000);
+      }, 2500);
     } else {
       setSyncStatus('local');
     }
 
     return () => {
       window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
       if (intervalId) clearInterval(intervalId);
     };
-  }, [cloudUrl, pullFromCloud]);
+  }, [resolvedFirebase, pullFromCloud]);
 
-  // Helper to update rooms, record per-room daily history AND global log, and push to cloud
+  // Helper to update rooms, record per-room daily history AND global log, and AUTOMATICALLY sync to Firebase
   const applyRoomChange = (
     roomId: number,
     updater: (room: Room) => {
@@ -576,7 +718,8 @@ export default function App() {
     setLogs(nextLogs);
     showToast(`Oda ${roomId}: ${generatedActionText}`);
 
-    if (cloudUrl.trim() !== '') {
+    // Automatic instant push to Firebase on every valve/collector click
+    if (resolvedFirebase.mode !== 'none') {
       pushToCloud(nextRooms, nextLogs);
     }
   };
@@ -654,7 +797,7 @@ export default function App() {
     e.preventDefault();
     if (selectedRoomId === null || !customHistoryEntry.trim()) return;
     const text = customHistoryEntry.trim();
-    applyRoomChange(selectedRoomId, (r) => ({
+    applyRoomChange(selectedRoomId, () => ({
       note: text,
       actionText: `Not / Kontrol Kaydı: ${text}`,
     }));
@@ -732,7 +875,7 @@ export default function App() {
     setIsBulkOpen(false);
     showToast(`${affected} oda için toplu işlem kaydedildi`);
 
-    if (cloudUrl.trim() !== '') {
+    if (resolvedFirebase.mode !== 'none') {
       pushToCloud(nextRooms, nextLogs);
     }
   };
@@ -756,7 +899,10 @@ export default function App() {
     ];
     const rows = rooms.map((r) => {
       const m = getRoomMetrics(r);
-      const lastAction = r.history && r.history[0] ? `${r.history[0].dateLabel} ${r.history[0].time} - ${r.history[0].action}` : '';
+      const lastAction =
+        r.history && r.history[0]
+          ? `${r.history[0].dateLabel} ${r.history[0].time} - ${r.history[0].action}`
+          : '';
       return [
         r.id,
         r.occupied ? 'Dolu' : 'Bos',
@@ -811,7 +957,7 @@ export default function App() {
         if (parsed && Array.isArray(parsed.rooms)) {
           setRooms(parsed.rooms);
           if (Array.isArray(parsed.logs)) setLogs(parsed.logs);
-          if (cloudUrl.trim() !== '') {
+          if (resolvedFirebase.mode !== 'none') {
             pushToCloud(parsed.rooms, parsed.logs || []);
           }
           showToast('Yedek dosyası başarıyla yüklendi');
@@ -840,7 +986,7 @@ export default function App() {
     ];
     setRooms(defaultRooms);
     setLogs(resetLogs);
-    if (cloudUrl.trim() !== '') {
+    if (resolvedFirebase.mode !== 'none') {
       pushToCloud(defaultRooms, resetLogs);
     }
     showToast('Panel varsayılan verilere sıfırlandı');
@@ -925,7 +1071,10 @@ export default function App() {
       });
     });
 
-    const groups: Record<string, { dateIso: string; dateLabel: string; items: (RoomHistoryItem & { roomId: number })[] }> = {};
+    const groups: Record<
+      string,
+      { dateIso: string; dateLabel: string; items: (RoomHistoryItem & { roomId: number })[] }
+    > = {};
     allItems.forEach((item) => {
       if (!groups[item.dateIso]) {
         groups[item.dateIso] = {
@@ -1011,14 +1160,14 @@ export default function App() {
                   </span>
                 </div>
                 <p className="text-xs text-slate-400">
-                  Oda içi gün gün tarihçe kayıtlı • Telefon &amp; Bilgisayar senkronizasyon destekli
+                  Oda içi gün gün tarihçe kayıtlı • Otomatik Firebase senkronizasyonlu
                 </p>
               </div>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Sync Status / Phone <-> PC Button */}
+            {/* Automatic Live Sync Status Badge */}
             <button
               type="button"
               onClick={() => setIsSyncModalOpen(true)}
@@ -1043,12 +1192,12 @@ export default function App() {
               />
               <span>
                 {syncStatus === 'synced'
-                  ? `Canlı Eşitlendi (${lastSyncedAt})`
+                  ? `Canlı Bağlı (${lastSyncedAt})`
                   : syncStatus === 'syncing'
-                  ? 'Eşitleniyor...'
+                  ? 'Otomatik Kaydediliyor...'
                   : syncStatus === 'error'
-                  ? 'Bağlantı Hatası (Ayarla)'
-                  : `Cihaz: ${deviceName} (Bulut Eşitle)`}
+                  ? 'Firebase Ayarı'
+                  : 'Firebase Otomatik Eşitleme'}
               </span>
             </button>
 
@@ -1078,6 +1227,7 @@ export default function App() {
             >
               <span>Rapor İndir (CSV)</span>
             </button>
+
             <button
               type="button"
               onClick={handleResetDemo}
@@ -1190,14 +1340,10 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2 text-xs text-slate-400 px-2">
-            <span>Aktif Cihaz: <strong className="text-amber-400">{deviceName}</strong></span>
-            <button
-              type="button"
-              onClick={() => setIsSyncModalOpen(true)}
-              className="text-sky-400 hover:underline font-medium"
-            >
-              Değiştir / Eşitle
-            </button>
+            <span>
+              Cihaz: <strong className="text-amber-400">{deviceName}</strong>
+              {resolvedFirebase.label ? ` • ${resolvedFirebase.label}` : ''}
+            </span>
           </div>
         </div>
 
@@ -1828,17 +1974,15 @@ export default function App() {
         </div>
       )}
 
-      {/* Cross-Device Cloud Sync Modal (Phone <-> PC) */}
+      {/* Automatic Firebase Config Modal */}
       {isSyncModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl">
             <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
               <div>
-                <h2 className="text-base font-bold text-white">
-                  Telefon ↔ Bilgisayar Canlı Eşitleme &amp; Yedekleme
-                </h2>
+                <h2 className="text-base font-bold text-white">Otomatik Firebase &amp; Cihaz Ayarları</h2>
                 <p className="text-xs text-slate-400">
-                  Telefonda değiştirdiğiniz vanaların bilgisayarda da anında güncellenmesi için ayarlar
+                  Vana değiştiğinde tuşa basmadan otomatik olarak tüm cihazlarda güncellenir
                 </p>
               </div>
               <button
@@ -1851,13 +1995,31 @@ export default function App() {
             </div>
 
             <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+              {/* Auto-detection status */}
+              <div className="p-3.5 rounded-xl bg-slate-950 border border-emerald-500/30 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-emerald-400">Otomatik Senkronizasyon Modu Aktif</span>
+                  <span className="text-[11px] text-slate-400">Anlık Kayıt</span>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  Herhangi bir vanaya veya kollektöre dokunduğunuz anda ekstra bir tuşa basmanıza gerek kalmadan <strong>otomatik olarak</strong> kaydedilir. Projenizde <code className="text-amber-300">.env</code> içinde Firebase tanımlıysa doğrudan onu kullanır; tanımlı değilse aşağıya Firebase <strong>Project ID</strong> veya <strong>firebaseConfig</strong> kodunuzu bir kez yapıştırmanız yeterlidir:
+                </p>
+                <textarea
+                  rows={3}
+                  value={cloudUrl}
+                  onChange={(e) => setCloudUrl(e.target.value)}
+                  placeholder='Firebase Project ID (örn: otel-takip-123) veya firebaseConfig kodunuzu buraya yapıştırın...'
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
+                />
+              </div>
+
               {/* Device Name */}
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  1. Bu Cihazın / Kullanıcının Adı (Kayıtlarda Görünür)
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Bu Cihazın Adı (Oda Geçmişinde Kim Değiştirdi Görünmesi İçin)
                 </label>
                 <div className="flex flex-wrap gap-1.5 mb-2">
-                  {['Telefon (Yönetici)', 'Resepsiyon PC', 'Teknik Servis (Mobil)', 'Gece Vardiyası'].map((preset) => (
+                  {['Telefon', 'Bilgisayar', 'Resepsiyon', 'Teknik Servis'].map((preset) => (
                     <button
                       key={preset}
                       type="button"
@@ -1876,56 +2038,14 @@ export default function App() {
                   type="text"
                   value={deviceName}
                   onChange={(e) => setDeviceName(e.target.value)}
-                  placeholder="Örn: Ahmet Telefon"
+                  placeholder="Örn: Telefon"
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-100 focus:outline-none focus:border-amber-500"
                 />
               </div>
 
-              {/* Cloud Sync URL */}
-              <div className="p-3.5 rounded-xl bg-slate-950 border border-sky-500/30 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-sky-400">
-                    2. Canlı Bulut Veritabanı Bağlantısı (Telefon ↔ PC)
-                  </span>
-                  <span className="text-[11px] text-slate-400">4 sn&apos;de bir otomatik eşitler</span>
-                </div>
-                <p className="text-[11px] text-slate-300 leading-relaxed">
-                  Tarayıcı hafızası (<code className="text-amber-300">localStorage</code>) verilerinizi kullandığınız cihazda kalıcı olarak saklar ve silinmez. Ancak <strong>telefonda yaptığınız değişikliğin bilgisayarda da anında görünmesi</strong> için ücretsiz bir <strong>Firebase Realtime Database URL</strong> adresini hem telefonunuzda hem bilgisayarınızda buraya yapıştırmanız yeterlidir:
-                </p>
-                <input
-                  type="url"
-                  value={cloudUrl}
-                  onChange={(e) => setCloudUrl(e.target.value)}
-                  placeholder="Örn: https://otel-isitma-default-rtdb.europe-west1.firebasedatabase.app"
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-500"
-                />
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => pushToCloud(rooms, logs)}
-                    disabled={!cloudUrl.trim()}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-sky-500 hover:bg-sky-400 disabled:opacity-40 text-slate-950 transition"
-                  >
-                    Şimdi Buluta Gönder
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => pullFromCloud(false)}
-                    disabled={!cloudUrl.trim()}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 border border-slate-700 transition"
-                  >
-                    Buluttan Çek
-                  </button>
-                </div>
-              </div>
-
               {/* Manual Backup Export/Import */}
-              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-                <div className="text-xs font-bold text-slate-200">3. Dosya Olarak Yedekle / Başka Cihaza Aktar</div>
-                <p className="text-[11px] text-slate-400">
-                  Tüm oda ayarlarını ve gün gün geçmiş kayıtlarını cihazınıza indirebilir veya başka bir cihaza yükleyebilirsiniz.
-                </p>
-                <div className="flex flex-wrap items-center gap-2 pt-1">
+              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={handleExportJsonBackup}
@@ -1937,14 +2057,14 @@ export default function App() {
                     <span>Yedek Yükle (.json)</span>
                     <input type="file" accept=".json" onChange={handleImportJsonBackup} className="hidden" />
                   </label>
-                  <button
-                    type="button"
-                    onClick={handleResetDemo}
-                    className="ml-auto px-2.5 py-1.5 rounded-lg text-xs text-rose-400 hover:bg-rose-950/50 transition"
-                  >
-                    Varsayılana Sıfırla
-                  </button>
                 </div>
+                <button
+                  type="button"
+                  onClick={handleResetDemo}
+                  className="px-2.5 py-1.5 rounded-lg text-xs text-rose-400 hover:bg-rose-950/50 transition"
+                >
+                  Varsayılana Sıfırla
+                </button>
               </div>
             </div>
 
@@ -1953,7 +2073,10 @@ export default function App() {
                 type="button"
                 onClick={() => {
                   setIsSyncModalOpen(false);
-                  showToast('Eşitleme ayarları kaydedildi');
+                  if (resolvedFirebase.mode !== 'none') {
+                    pushToCloud(rooms, logs);
+                  }
+                  showToast('Ayarlar kaydedildi, otomatik eşitleme aktif');
                 }}
                 className="px-4 py-2 rounded-xl text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 transition"
               >
