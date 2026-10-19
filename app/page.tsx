@@ -1,892 +1,1226 @@
-// @ts-nocheck
-"use client";
-import { useState, useEffect, useRef } from "react";
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc } from "firebase/firestore";
-
-const firebaseConfig = {
-  apiKey: "AIzaSyBkAafEYmhC_UCIK6nK19zGn1pEy45mtVA",
-  authDomain: "doors-panel.firebaseapp.com",
-  projectId: "doors-panel",
-  storageBucket: "doors-panel.firebasestorage.app",
-  messagingSenderId: "717146829376",
-  appId: "1:717146829376:web:1b05588aa972d56e0865a5",
-  measurementId: "G-N98E7SFG26"
-};
-
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-const db = getFirestore(app);
-
-export default function HotelTimelineVIP() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [usernameInput, setUsernameInput] = useState("");
-  const [passwordInput, setPasswordInput] = useState("");
-  const [loginError, setLoginError] = useState("");
-
-  useEffect(() => {
-    if (localStorage.getItem("doors_logged_in") === "true") setIsLoggedIn(true);
-  }, []);
-
-  const handleLogin = (e) => {
-    e.preventDefault();
-    if (usernameInput === "doorsofcappadocia" && passwordInput === "Doors6162") {
-      setIsLoggedIn(true);
-      localStorage.setItem("doors_logged_in", "true");
-      setLoginError("");
-    } else {
-      setLoginError("Kullanıcı adı veya şifre hatalı!");
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Otel Yerden Isıtma & Kollektör Takip Paneli (101-120)</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
     }
-  };
-
-  const handleLogout = () => {
-    setIsLoggedIn(false);
-    localStorage.removeItem("doors_logged_in");
-  };
-
-  const [activeTab, setActiveTab] = useState("timeline"); 
-  const [reservations, setReservations] = useState([]);
-  const [transactions, setTransactions] = useState([]);
-  const [housekeeping, setHousekeeping] = useState([]);
-
-  // Modaller
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedRez, setSelectedRez] = useState(null);
-  const [formData, setFormData] = useState({
-    roomNo: "", checkIn: "", checkOut: "", guestName: "", phone: "", note: "", balance: 0, currency: "EUR", debts: [], payments: [], status: "waiting"
-  });
-
-  const activities = [
-    "Balon Turu", "ATV (Quad) Turu", "At Turu (Horse)", "Deve Turu (Camel)", "Türk Gecesi", 
-    "Regular (Grup) Tur", "Özel (Private) Tur", "Transfer - Kayseri", "Transfer - Nevşehir", "Oda Konaklama", "Diğer"
-  ];
-  
-  const extraOptions = ["Teras Bar", "Minibar", "Restoran", "Ütü / Çamaşırhane", "Housekeeping / Temizlik", "Spa & Masaj", "Oda Servisi"];
-
-  // Tur State
-  const [tourType, setTourType] = useState("Balon Turu");
-  const [tourPrice, setTourPrice] = useState("");
-  const [tourCurrency, setTourCurrency] = useState("EUR");
-
-  // Tesis İçi Ekstra State (Teras Bar, Ütü vb. + Fiş No)
-  const [extraType, setExtraType] = useState("Teras Bar");
-  const [extraAmount, setExtraAmount] = useState("");
-  const [extraCurrency, setExtraCurrency] = useState("TL");
-  const [extraReceiptNo, setExtraReceiptNo] = useState("");
-  const [extraNote, setExtraNote] = useState("");
-
-  // Tahsilat State (Doğrudan Kasa)
-  const [payAmount, setPayAmount] = useState("");
-  const [payCurrency, setPayCurrency] = useState("EUR");
-  const [payMethod, setPayMethod] = useState("cash"); 
-  const [payCategory, setPayCategory] = useState("Oda Konaklama"); 
-  const [payNote, setPayNote] = useState("");
-
-  // Kasa İşlemleri (Manuel)
-  const [kasaAmount, setKasaAmount] = useState("");
-  const [kasaCurrency, setKasaCurrency] = useState("TL");
-  const [kasaType, setKasaType] = useState("expense");
-  const [kasaCategory, setKasaCategory] = useState("Genel Gider / Masraf");
-  const [kasaMethod, setKasaMethod] = useState("cash");
-  const [kasaDesc, setKasaDesc] = useState("");
-
-  const [tooltip, setTooltip] = useState({ visible: false, x: 0, y: 0, rez: null });
-
-  // TAKVİM MOTORU & FİLTRELER
-  const getTodayStr = () => {
-    const d = new Date();
-    return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
-  };
-  
-  const todayStr = getTodayStr();
-  const [viewStartDate, setViewStartDate] = useState(todayStr);
-
-  const shiftDate = (daysToAdd) => {
-    const d = new Date(viewStartDate);
-    d.setDate(d.getDate() + daysToAdd);
-    setViewStartDate([d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-'));
-  };
-
-  const visibleDays = Array.from({ length: 21 }, (_, i) => {
-    const d = new Date(viewStartDate);
-    d.setDate(d.getDate() + i - 1); 
-    const dateStr = [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
-    const dayNum = d.getDate();
-    const dayName = d.toLocaleDateString("tr-TR", { weekday: "short" });
-    return { dateStr, dayNum, dayName };
-  });
-
-  const tomorrowObj = new Date(); tomorrowObj.setDate(tomorrowObj.getDate() + 1);
-  const tomorrowStr = [tomorrowObj.getFullYear(), String(tomorrowObj.getMonth() + 1).padStart(2, '0'), String(tomorrowObj.getDate()).padStart(2, '0')].join('-');
-  const yesterdayObj = new Date(); yesterdayObj.setDate(yesterdayObj.getDate() - 1);
-  const yesterdayStr = [yesterdayObj.getFullYear(), String(yesterdayObj.getMonth() + 1).padStart(2, '0'), String(yesterdayObj.getDate()).padStart(2, '0')].join('-');
-
-  const [reportFilterDate, setReportFilterDate] = useState(todayStr);
-  const [hkFilterDate, setHkFilterDate] = useState(todayStr);
-  const [extraFilterDate, setExtraFilterDate] = useState(todayStr); 
-
-  const rooms = Array.from({ length: 20 }, (_, i) => 101 + i);
-
-  useEffect(() => {
-    if (!isLoggedIn) return;
-    const unsubRez = onSnapshot(collection(db, "reservations"), (snapshot) => setReservations(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }))));
-    const unsubKasa = onSnapshot(collection(db, "transactions"), (snapshot) => setTransactions(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })).sort((a,b) => Number(b.id) - Number(a.id))));
-    const unsubHK = onSnapshot(collection(db, "housekeeping"), (snapshot) => setHousekeeping(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }))));
-    return () => { unsubRez(); unsubKasa(); unsubHK(); };
-  }, [isLoggedIn]);
-
-  const handleOpenNewModal = (roomNo, dateStr) => {
-    const d = new Date(dateStr); d.setDate(d.getDate() + 1);
-    const checkOutStr = [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
-    setFormData({ roomNo, checkIn: dateStr, checkOut: checkOutStr, guestName: "", phone: "", note: "", balance: 0, currency: "EUR", debts: [], payments: [], status: "waiting" });
-    setSelectedRez(null); setIsModalOpen(true);
-  };
-
-  const handleEditRez = (rez) => {
-    if (!rez) return;
-    setTooltip({ visible: false, x: 0, y: 0, rez: null });
-    setFormData({ 
-      ...rez, 
-      currency: rez.currency || "EUR", 
-      status: rez.status || "waiting", 
-      payments: Array.isArray(rez.payments) ? rez.payments : [], 
-      debts: Array.isArray(rez.debts) ? rez.debts : [] 
-    });
-    setSelectedRez(rez); setIsModalOpen(true);
-  };
-
-  const handleSaveRez = async () => {
-    if (!formData.guestName || !formData.checkOut) return alert("Lütfen misafir adı ve çıkış tarihi girin.");
-    const rezId = selectedRez ? selectedRez.id : Date.now().toString();
-    await setDoc(doc(db, "reservations", rezId), { ...formData, id: rezId });
-    setIsModalOpen(false);
-  };
-
-  const handleDeleteRez = async () => {
-    if (confirm("Bu rezervasyonu silmek istediğinize emin misiniz?")) {
-      await deleteDoc(doc(db, "reservations", selectedRez.id.toString()));
-      setIsModalOpen(false);
+    .valve-pulse {
+      animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
     }
-  };
+    @keyframes pulse-ring {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.65; }
+    }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #1e293b;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #475569;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #64748b;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-amber-500 selection:text-slate-950">
 
-  const handleAddTourToRez = () => {
-    if (!tourPrice) return alert("Lütfen ücret girin.");
-    const safeDebts = Array.isArray(formData.debts) ? formData.debts : [];
-    setFormData({ ...formData, debts: [...safeDebts, { id: Date.now().toString(), title: tourType, type: 'tour', amount: parseFloat(tourPrice) || 0, currency: tourCurrency }] });
-    setTourPrice("");
-  };
+  <!-- Top Header -->
+  <header class="sticky top-0 z-30 bg-slate-900/95 backdrop-blur border-b border-slate-800 px-4 py-3 sm:px-6">
+    <div class="max-w-7xl mx-auto flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center shadow-lg shadow-orange-500/20 shrink-0">
+          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z" />
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-lg sm:text-xl font-bold tracking-tight text-white">Otel Yerden Isıtma Takip Paneli</h1>
+            <span class="hidden md:inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              101 – 120 (20 Oda)
+            </span>
+          </div>
+          <p class="text-xs text-slate-400">Oda bazlı 2 Ana Vana ve 5 Kollektör (Hat) anlık durum ve vardiya kontrol sistemi</p>
+        </div>
+      </div>
 
-  const handleAddExtraToRez = () => {
-    if (!extraAmount) return alert("Lütfen ücret girin.");
-    const receiptStr = extraReceiptNo ? `(Fiş: ${extraReceiptNo})` : "";
-    const noteStr = extraNote ? `- ${extraNote}` : "";
-    const title = `${extraType} ${receiptStr} ${noteStr}`.trim();
+      <!-- Top Action Buttons -->
+      <div class="flex flex-wrap items-center gap-2">
+        <button id="btnOpenBulkModal" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+          <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+          </svg>
+          Toplu İşlem
+        </button>
+        <button id="btnOpenLogDrawer" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+          <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Hareket Kayıtları
+          <span id="logCountBadge" class="ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] bg-sky-500/20 text-sky-300 font-semibold">0</span>
+        </button>
+        <button id="btnExportCsv" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+          <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          Rapor İndir (CSV)
+        </button>
+        <button id="btnResetDemo" type="button" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800/60 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 border border-slate-800 hover:border-rose-800/50 transition" title="Varsayılan verilere sıfırla">
+          Sıfırla
+        </button>
+      </div>
+    </div>
+  </header>
 
-    const safeDebts = Array.isArray(formData.debts) ? formData.debts : [];
-    setFormData({ 
-      ...formData, 
-      debts: [...safeDebts, { 
-        id: Date.now().toString(), 
-        title, 
-        type: 'extra', 
-        category: extraType,
-        receiptNo: extraReceiptNo, 
-        amount: parseFloat(extraAmount) || 0, 
-        currency: extraCurrency,
-        dateAdded: todayStr
-      }] 
-    });
-    setExtraAmount(""); setExtraReceiptNo(""); setExtraNote("");
-  };
+  <!-- Main Content -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 py-5 sm:px-6 space-y-5">
 
-  const handleDeleteDebt = (debtId) => {
-    const safeDebts = Array.isArray(formData.debts) ? formData.debts : [];
-    setFormData({ ...formData, debts: safeDebts.filter(d => d.id !== debtId) });
-  };
+    <!-- KPI Summary Cards -->
+    <section class="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
+        <div class="flex items-center justify-between text-xs text-slate-400">
+          <span>Toplam Oda</span>
+          <span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-medium">101-120</span>
+        </div>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span id="statTotalRooms" class="text-2xl font-bold text-white">20</span>
+          <span id="statOccupiedRooms" class="text-xs text-emerald-400">14 Dolu • 6 Boş</span>
+        </div>
+      </div>
 
-  // DOĞRUDAN VE SADECE ANA KASAYA TAHSİLAT
-  const handleReceivePayment = async () => {
-    if (!payAmount) return;
-    const amountNum = parseFloat(payAmount) || 0;
-    const payId = Date.now().toString();
-    
-    // Rezervasyona ekle
-    const safePayments = Array.isArray(formData.payments) ? formData.payments : [];
-    const updatedRez = { ...formData, payments: [...safePayments, { id: payId, category: payCategory, amount: amountNum, currency: payCurrency, method: payMethod, note: payNote, date: todayStr }] };
-    setFormData(updatedRez);
-    await setDoc(doc(db, "reservations", updatedRez.id.toString()), updatedRez);
-    
-    // Ana Kasaya detaylı log
-    const detailedNote = payNote ? ` | Not: ${payNote}` : '';
-    const txDesc = `Oda ${formData.roomNo} - ${formData.guestName} | Tür: ${payCategory}${detailedNote}`;
-    
-    await setDoc(doc(db, "transactions", (Date.now() + 1).toString()), { 
-      id: (Date.now() + 1).toString(), date: todayStr, type: 'income', category: payCategory, amount: amountNum, currency: payCurrency, method: payMethod, desc: txDesc, source: "rezervasyon"
-    });
+      <div class="bg-slate-900 border border-orange-500/20 rounded-xl p-3.5 flex flex-col justify-between">
+        <div class="flex items-center justify-between text-xs text-orange-300/90">
+          <span>Tam Isıtan Odalar</span>
+          <span class="w-2 h-2 rounded-full bg-orange-500"></span>
+        </div>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span id="statFullHeat" class="text-2xl font-bold text-orange-400">0</span>
+          <span class="text-xs text-slate-400">2 Vana + 5/5 Kollektör</span>
+        </div>
+      </div>
 
-    setPayAmount(""); setPayNote("");
-  };
+      <div class="bg-slate-900 border border-amber-500/20 rounded-xl p-3.5 flex flex-col justify-between">
+        <div class="flex items-center justify-between text-xs text-amber-300/90">
+          <span>Kısmi / Kısık Isıtma</span>
+          <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+        </div>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span id="statPartialHeat" class="text-2xl font-bold text-amber-400">0</span>
+          <span class="text-xs text-slate-400">Kollektör/Vana Kısık</span>
+        </div>
+      </div>
 
-  // ANA KASAYA MANUEL İŞLEM (Masraflar, Gelirler)
-  const handleAddManualTransaction = async () => {
-    if(!kasaAmount || !kasaDesc) return alert("Tutar ve açıklama zorunludur.");
-    const amt = parseFloat(kasaAmount) || 0;
-    const newTxId = Date.now().toString();
+      <div class="bg-slate-900 border border-rose-500/20 rounded-xl p-3.5 flex flex-col justify-between">
+        <div class="flex items-center justify-between text-xs text-rose-300/90">
+          <span>Ana Vanası Kapalı</span>
+          <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+        </div>
+        <div class="mt-2 flex items-baseline justify-between">
+          <span id="statClosedRooms" class="text-2xl font-bold text-rose-400">0</span>
+          <span class="text-xs text-slate-400">Isı Akışı Kesik (%0)</span>
+        </div>
+      </div>
 
-    const newTx = { id: newTxId, date: todayStr, type: kasaType, category: kasaCategory, amount: amt, currency: kasaCurrency, method: kasaMethod, desc: kasaDesc, source: "manuel" };
-    await setDoc(doc(db, "transactions", newTxId), newTx);
-    
-    setKasaAmount(""); setKasaDesc(""); 
-  };
+      <div class="col-span-2 lg:col-span-1 bg-slate-900 border border-sky-500/20 rounded-xl p-3.5 flex flex-col justify-between">
+        <div class="flex items-center justify-between text-xs text-sky-300/90">
+          <span>Aktif Kollektör Oranı</span>
+          <span id="statAvgPowerPct" class="text-xs font-semibold text-sky-400">%0</span>
+        </div>
+        <div class="mt-2">
+          <div class="flex items-baseline justify-between mb-1">
+            <span id="statActiveCollectors" class="text-xl font-bold text-white">0 / 100</span>
+            <span class="text-[11px] text-slate-400">Su Geçen Hat</span>
+          </div>
+          <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+            <div id="statCollectorBar" class="h-full bg-gradient-to-r from-sky-500 to-orange-500 transition-all duration-300" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-  // HOUSEKEEPING LOG KAYDI
-  const handleUpdateHK = async (roomNo, status, note = "") => {
-    const hkId = `${hkFilterDate}_${roomNo}`;
-    await setDoc(doc(db, "housekeeping", hkId), { roomNo, date: hkFilterDate, status, note, updatedAt: new Date().toISOString() });
-  };
+    <!-- Filter, Search & Legend Toolbar -->
+    <section class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <!-- Filter Tabs -->
+      <div class="flex flex-wrap items-center gap-1.5" id="filterButtonsContainer">
+        <button type="button" data-filter="all" class="filter-btn px-3 py-1.5 rounded-lg text-xs font-medium transition bg-amber-500 text-slate-950 font-semibold">
+          Tümü (20)
+        </button>
+        <button type="button" data-filter="full" class="filter-btn px-3 py-1.5 rounded-lg text-xs font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700">
+          Tam Açık (5/5)
+        </button>
+        <button type="button" data-filter="partial" class="filter-btn px-3 py-1.5 rounded-lg text-xs font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700">
+          Kollektörü Kısık Olanlar
+        </button>
+        <button type="button" data-filter="main_closed" class="filter-btn px-3 py-1.5 rounded-lg text-xs font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700">
+          Ana Vanası Kapalı
+        </button>
+        <button type="button" data-filter="mismatch" class="filter-btn px-3 py-1.5 rounded-lg text-xs font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" title="Ana vana kapalı olduğu halde kollektör mandalları açık unutulanlar veya tam tersi">
+          Dikkat / Uyarı
+        </button>
+      </div>
 
-  const getCalc = (rez) => {
-    if (!rez) return { totalDebt: 0, totalPaid: 0, remaining: 0, currency: 'EUR' };
-    const baseBalance = parseFloat(rez.balance) || 0;
-    const safeDebts = Array.isArray(rez.debts) ? rez.debts : [];
-    const debtsAmount = safeDebts.reduce((a, b) => a + (parseFloat(b.amount) || 0), 0);
-    const safePayments = Array.isArray(rez.payments) ? rez.payments : [];
-    const paidAmount = safePayments.reduce((a, b) => a + (parseFloat(b.amount) || 0), 0);
-    const totalDebt = baseBalance + debtsAmount;
-    return { totalDebt, totalPaid: paidAmount, remaining: totalDebt - paidAmount, currency: rez.currency || 'EUR' };
-  };
+      <!-- Search & View Controls -->
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="relative flex-1 sm:w-56">
+          <svg class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input id="searchInput" type="text" placeholder="Oda no (örn: 101) veya not ara..." class="w-full pl-9 pr-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500" />
+        </div>
 
-  const kasaBalances = transactions.reduce((acc, tx) => {
-    const cur = tx.currency || 'TL';
-    if (!acc[cur]) acc[cur] = { total: 0, cash: 0, cc: 0 };
-    const multiplier = tx.type === 'income' ? 1 : -1;
-    const amt = parseFloat(tx.amount) || 0;
-    acc[cur].total += (amt * multiplier);
-    if (tx.method === 'cash') acc[cur].cash += (amt * multiplier);
-    if (tx.method === 'cc') acc[cur].cc += (amt * multiplier);
-    return acc;
-  }, { TL: { total: 0, cash: 0, cc: 0 }, USD: { total: 0, cash: 0, cc: 0 }, EUR: { total: 0, cash: 0, cc: 0 } });
+        <select id="occupancyFilter" class="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500">
+          <option value="all">Tüm Doluluk Durumları</option>
+          <option value="occupied">Sadece Dolu Odalar</option>
+          <option value="empty">Sadece Boş Odalar</option>
+        </select>
+      </div>
+    </section>
 
-  const getStatusColor = (status) => {
-    if (status === 'checked_in') return "bg-emerald-500 text-white shadow-emerald-500/40 shadow-sm border border-emerald-600";
-    if (status === 'checked_out') return "bg-rose-500 text-white shadow-rose-500/40 shadow-sm border border-rose-600";
-    return "bg-indigo-500 text-white shadow-indigo-500/40 shadow-sm border border-indigo-600";
-  };
+    <!-- Quick Interactive Guide Bar -->
+    <div class="bg-slate-900/60 border border-slate-800/80 rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+      <div class="flex flex-wrap items-center gap-4">
+        <span class="font-medium text-slate-300">Nasıl Çalışır?</span>
+        <span class="inline-flex items-center gap-1.5">
+          <span class="w-2.5 h-2.5 rounded-sm bg-emerald-500 inline-block"></span>
+          <strong>Ana Vana 1 & 2:</strong> Gidiş/Dönüş ana hatları. İkisinden biri kapanırsa odaya sıcak su girişi kesilir veya düşer.
+        </span>
+        <span class="inline-flex items-center gap-1.5">
+          <span class="w-2.5 h-2.5 rounded-sm bg-orange-500 inline-block"></span>
+          <strong>K1 – K5 Kollektörler:</strong> Oda içi 5 ayrı yerden ısıtma döngüsü. Tıklayarak tek tek açıp kapatabilirsiniz.
+        </span>
+      </div>
+      <span class="text-[11px] text-amber-400/90">İpucu: Kart üzerindeki Vana ve Kollektör kutularına doğrudan tıklayarak durumu değiştirebilirsiniz.</span>
+    </div>
 
-  const renderRowCells = (roomNo) => {
-    let cells = [];
-    for (let i = 0; i < visibleDays.length; ) {
-      const day = visibleDays[i].dateStr;
-      const rez = reservations.find(r => r.roomNo === roomNo && day >= r.checkIn && day < r.checkOut);
+    <!-- Rooms Grid (101 - 120) -->
+    <section id="roomsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <!-- Rendered dynamically by JS -->
+    </section>
 
-      if (rez) {
-        let span = 1; 
-        for (let j = i + 1; j < visibleDays.length; j++) {
-          if (visibleDays[j].dateStr < rez.checkOut) span++; else break;
+    <!-- Empty State when Filtered -->
+    <div id="emptyState" class="hidden bg-slate-900 border border-slate-800 rounded-xl p-10 text-center space-y-3">
+      <p class="text-sm text-slate-300 font-medium">Seçilen filtreye uygun oda bulunamadı.</p>
+      <button id="btnClearFilters" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 text-slate-950 hover:bg-amber-400 transition">
+        Filtreleri Temizle
+      </button>
+    </div>
+
+  </main>
+
+  <!-- Room Detail & Note Modal -->
+  <div id="roomDetailModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl">
+      <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+        <div>
+          <h2 id="modalRoomTitle" class="text-base font-bold text-white">Oda 101 Detaylı Vana & Kollektör Ayarı</h2>
+          <p id="modalRoomSubtitle" class="text-xs text-slate-400">Son işlem: --</p>
+        </div>
+        <button id="btnCloseDetailModal" type="button" class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="p-5 space-y-5 max-h-[80vh] overflow-y-auto">
+        <!-- Occupancy & Quick Preset -->
+        <div class="flex flex-wrap items-center justify-between gap-2 bg-slate-950 p-3 rounded-xl border border-slate-800">
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-slate-400">Oda Durumu:</span>
+            <button id="modalToggleOccupancy" type="button" class="px-2.5 py-1 rounded-md text-xs font-semibold transition"></button>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button id="modalPresetFull" type="button" class="px-2.5 py-1 rounded text-xs font-medium bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 border border-orange-500/30 transition">
+              Tam Aç (2V + 5K)
+            </button>
+            <button id="modalPresetEco" type="button" class="px-2.5 py-1 rounded text-xs font-medium bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/30 transition">
+              Kısık Mod (3/5 K)
+            </button>
+            <button id="modalPresetOff" type="button" class="px-2.5 py-1 rounded text-xs font-medium bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 border border-rose-500/30 transition">
+              Ana Vanayı Kapat
+            </button>
+          </div>
+        </div>
+
+        <!-- 2 Main Valves -->
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+            Ana Vanalar (2 Adet - Oda Ana Giriş & Dönüş)
+          </label>
+          <div id="modalMainValvesContainer" class="grid grid-cols-2 gap-3">
+            <!-- Populated by JS -->
+          </div>
+          <p class="mt-1.5 text-[11px] text-slate-400">
+            Not: Ana vanalardan biri veya ikisi kapatıldığında kollektörler açık kalsa dahi sıcak su devirdaimi kesilir.
+          </p>
+        </div>
+
+        <!-- 5 Collectors -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Kollektör Hatları (5 Adet)
+            </label>
+            <span id="modalCollectorSummary" class="text-xs font-medium text-amber-400">5/5 Açık</span>
+          </div>
+          <div id="modalCollectorsContainer" class="space-y-2">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <!-- Technician Note -->
+        <div>
+          <label for="modalRoomNote" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+            Teknik Servis / Resepsiyon Notu
+          </label>
+          <textarea id="modalRoomNote" rows="2" placeholder="Örn: Müşteri çok sıcak dediği için 2 kollektör kapatıldı..." class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"></textarea>
+        </div>
+      </div>
+
+      <div class="px-5 py-3.5 bg-slate-950 border-t border-slate-800 flex items-center justify-end gap-2">
+        <button id="btnSaveRoomModal" type="button" class="px-4 py-2 rounded-xl text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 transition">
+          Notu Kaydet & Kapat
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bulk Operations Modal -->
+  <div id="bulkModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full overflow-hidden shadow-2xl">
+      <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+        <h2 class="text-base font-bold text-white">Toplu Vana & Kollektör İşlemleri</h2>
+        <button id="btnCloseBulkModal" type="button" class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <div class="p-5 space-y-3">
+        <p class="text-xs text-slate-400">Aşağıdaki hazır senaryolarla tüm odaları (101–120) veya sadece boş odaları tek tıkla ayarlayabilirsiniz:</p>
+
+        <button id="bulkAllFull" type="button" class="w-full text-left p-3 rounded-xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 flex items-center justify-between transition">
+          <div>
+            <div class="text-xs font-semibold text-orange-400">Tüm Odaları Tam Isıtmaya Al (101-120)</div>
+            <div class="text-[11px] text-slate-400">2 Ana Vana Açık + 5/5 Kollektör Açık (%100)</div>
+          </div>
+          <span class="text-xs font-bold text-orange-400">Uygula →</span>
+        </button>
+
+        <button id="bulkEmptyEco" type="button" class="w-full text-left p-3 rounded-xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 flex items-center justify-between transition">
+          <div>
+            <div class="text-xs font-semibold text-amber-400">Boş Odalarda 2 Kollektörü Kapat (Tasarruf)</div>
+            <div class="text-[11px] text-slate-400">Boş odalarda Ana Vanalar Açık, 3/5 Kollektör Açık (%60)</div>
+          </div>
+          <span class="text-xs font-bold text-amber-400">Uygula →</span>
+        </button>
+
+        <button id="bulkEmptyMainOff" type="button" class="w-full text-left p-3 rounded-xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 flex items-center justify-between transition">
+          <div>
+            <div class="text-xs font-semibold text-rose-400">Boş Odaların Ana Vanalarını Kapat</div>
+            <div class="text-[11px] text-slate-400">Boş odalarda 2 Ana Vana Kapatılır (%0 Isı)</div>
+          </div>
+          <span class="text-xs font-bold text-rose-400">Uygula →</span>
+        </button>
+
+        <button id="bulkAllMainOff" type="button" class="w-full text-left p-3 rounded-xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 flex items-center justify-between transition">
+          <div>
+            <div class="text-xs font-semibold text-slate-300">Tüm Otelin Ana Vanalarını Kapat (Sezon Sonu/Bakım)</div>
+            <div class="text-[11px] text-slate-400">101-120 tüm ana vanaları kapatır</div>
+          </div>
+          <span class="text-xs font-bold text-slate-400">Uygula →</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Activity Log Drawer -->
+  <div id="logDrawer" class="fixed inset-0 z-50 hidden justify-end bg-slate-950/75 backdrop-blur-sm">
+    <div class="bg-slate-900 border-l border-slate-800 w-full max-w-md h-full flex flex-col shadow-2xl">
+      <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+        <div>
+          <h2 class="text-base font-bold text-white">Vana & Kollektör Hareket Kayıtları</h2>
+          <p class="text-xs text-slate-400">Kim, hangi odada hangi vanayı/kollektörü açtı veya kapattı</p>
+        </div>
+        <button id="btnCloseLogDrawer" type="button" class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <div id="logListContainer" class="flex-1 overflow-y-auto p-4 space-y-2.5">
+        <!-- Populated by JS -->
+      </div>
+      <div class="p-4 border-t border-slate-800 bg-slate-950 flex items-center justify-between">
+        <button id="btnClearLogs" type="button" class="text-xs text-rose-400 hover:text-rose-300 font-medium">
+          Kayıtları Temizle
+        </button>
+        <span class="text-[11px] text-slate-500">Tarayıcı hafızasına otomatik kaydedilir</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <script>
+    (function () {
+      const STORAGE_KEY = 'otel_yerden_isitma_v1';
+      const LOG_STORAGE_KEY = 'otel_yerden_isitma_logs_v1';
+
+      const COLLECTOR_LABELS = [
+        'K1 (Yatak Odası)',
+        'K2 (Cam Önü)',
+        'K3 (Oturma Alanı)',
+        'K4 (Koridor/Giriş)',
+        'K5 (Banyo)'
+      ];
+
+      // Create realistic initial state for rooms 101 to 120 matching user's exact scenario
+      function createDefaultRooms() {
+        const rooms = [];
+        for (let num = 101; num <= 120; num++) {
+          let mainValves = [true, true];
+          let collectors = [true, true, true, true, true];
+          let occupied = true;
+          let note = '';
+
+          if (num === 101) {
+            // Exact scenario from user prompt: 2 main valves open, 2 collectors closed to reduce heat
+            mainValves = [true, true];
+            collectors = [true, true, true, false, false];
+            occupied = true;
+            note = 'Müşteri oda çok sıcak dediği için 2 kollektör kapatıldı, ana vanalar açık.';
+          } else if (num === 102) {
+            // Main valves closed, collectors still open physically
+            mainValves = [false, false];
+            collectors = [true, true, true, true, true];
+            occupied = false;
+            note = 'Oda boş olduğu için ana vanalar kapatıldı (kollektör mandalları açık konumda).';
+          } else if (num === 105 || num === 108 || num === 114) {
+            // Partial collectors open
+            mainValves = [true, true];
+            collectors = [true, true, false, true, false];
+            occupied = true;
+            note = 'Ilık mod: Cam önü ve banyo açık, 2 hat kısıldı.';
+          } else if (num === 110 || num === 115 || num === 119) {
+            // Main valves completely closed
+            mainValves = [false, false];
+            collectors = [false, false, false, false, false];
+            occupied = false;
+            note = 'Oda boş - Ana vanalar ve kollektörler kapalı.';
+          } else if (num === 112) {
+            // 1 Main valve closed (e.g. return valve throttled/closed)
+            mainValves = [true, false];
+            collectors = [true, true, true, true, false];
+            occupied = true;
+            note = '2. Ana vana kapalı! Devirdaim zayıf olabilir, kontrol edilmeli.';
+          } else if (num === 117 || num === 120) {
+            mainValves = [true, true];
+            collectors = [true, true, true, true, false];
+            occupied = false;
+            note = 'Yarın giriş var, ön ısıtma (4/5 kollektör açık).';
+          }
+
+          rooms.push({
+            id: num,
+            mainValves: mainValves, // [Vana 1, Vana 2]
+            collectors: collectors, // [K1, K2, K3, K4, K5]
+            occupied: occupied,
+            note: note,
+            updatedAt: 'Bugün 11:30'
+          });
+        }
+        return rooms;
+      }
+
+      let rooms = [];
+      let logs = [];
+      let activeFilter = 'all';
+      let occupancyFilter = 'all';
+      let searchQuery = '';
+      let activeModalRoomId = null;
+
+      function loadState() {
+        try {
+          const saved = localStorage.getItem(STORAGE_KEY);
+          if (saved) {
+            rooms = JSON.parse(saved);
+          } else {
+            rooms = createDefaultRooms();
+          }
+          const savedLogs = localStorage.getItem(LOG_STORAGE_KEY);
+          if (savedLogs) {
+            logs = JSON.parse(savedLogs);
+          } else {
+            logs = [
+              { time: '11:35', room: 101, msg: 'Kollektör 4 ve 5 kapatıldı (Ana vanalar açık, 3/5 aktif)' },
+              { time: '11:20', room: 102, msg: 'Ana Vana 1 ve 2 kapatıldı (Isı kesildi)' },
+              { time: '10:50', room: 112, msg: 'Ana Vana 2 kapatıldı (Tek ana vana açık uyarısı)' }
+            ];
+          }
+        } catch (e) {
+          rooms = createDefaultRooms();
+          logs = [];
+        }
+      }
+
+      function saveState() {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(rooms));
+          localStorage.setItem(LOG_STORAGE_KEY, JSON.stringify(logs));
+        } catch (e) {
+          // Ignore storage errors in sandboxed iframes
+        }
+      }
+
+      function getNowTimeStr() {
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        return hh + ':' + mm;
+      }
+
+      function addLog(roomId, msg) {
+        const time = getNowTimeStr();
+        logs.unshift({ time: time, room: roomId, msg: msg });
+        if (logs.length > 100) logs.pop();
+        saveState();
+        renderLogs();
+      }
+
+      function showToast(text) {
+        const container = document.getElementById('toastContainer');
+        const toast = document.createElement('div');
+        toast.className = 'bg-slate-800 border border-amber-500/40 text-slate-100 px-3.5 py-2 rounded-xl shadow-lg text-xs font-medium flex items-center gap-2 transition-all duration-300';
+        toast.innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-400 shrink-0"></span><span>' + text + '</span>';
+        container.appendChild(toast);
+        setTimeout(function () {
+          toast.style.opacity = '0';
+          setTimeout(function () {
+            if (toast.parentNode) toast.parentNode.removeChild(toast);
+          }, 300);
+        }, 2400);
+      }
+
+      // Compute room heating metrics
+      function getRoomMetrics(room) {
+        const openMainCount = room.mainValves.filter(Boolean).length;
+        const openCollectorCount = room.collectors.filter(Boolean).length;
+        const bothMainOpen = openMainCount === 2;
+        const allMainClosed = openMainCount === 0;
+        const oneMainClosed = openMainCount === 1;
+
+        // Effective heating power:
+        // If both main valves open -> each collector is 20%
+        // If only 1 main valve open -> restricted/blocked return or half flow (warn user)
+        // If 0 main valves open -> 0% effective heating regardless of collector knobs
+        let effectivePct = 0;
+        if (bothMainOpen) {
+          effectivePct = openCollectorCount * 20;
+        } else if (oneMainClosed) {
+          effectivePct = Math.round(openCollectorCount * 10);
+        } else {
+          effectivePct = 0;
         }
 
-        cells.push(
-          <td key={day} colSpan={span} className="border-r border-b border-slate-100 p-0.5 min-w-[50px] relative h-[36px]">
-            <div 
-              onMouseEnter={(e) => setTooltip({ visible: true, x: e.clientX, y: e.clientY, rez })}
-              onMouseMove={(e) => setTooltip({ visible: true, x: e.clientX, y: e.clientY, rez })}
-              onMouseLeave={() => setTooltip({ visible: false, x: 0, y: 0, rez: null })}
-              onClick={() => handleEditRez(rez)}
-              className={`${getStatusColor(rez.status)} text-[11px] font-bold px-2 h-full w-full rounded-md flex items-center cursor-pointer overflow-hidden z-10 transition-all duration-200 hover:scale-[1.02] hover:brightness-110`}
-            >
-              <span className="truncate w-full tracking-wide drop-shadow-sm">{rez.guestName}</span>
-              {getCalc(rez).remaining > 0 && <span className="absolute right-1 top-1 w-2 h-2 rounded-full bg-yellow-300 animate-pulse border border-white"></span>}
-            </div>
-          </td>
-        );
-        i += span; 
-      } else {
-        cells.push(
-          <td key={day} onClick={() => handleOpenNewModal(roomNo, day)} className={`border-r border-b border-slate-100 h-[36px] min-w-[50px] cursor-pointer hover:bg-indigo-50 transition-colors ${day === todayStr ? 'bg-indigo-50/40' : 'bg-white'}`}></td>
-        );
-        i++;
+        // Status category
+        let statusKey = 'partial';
+        let statusLabel = 'Kısmi Isıtma';
+        let statusColor = 'amber';
+
+        if (!bothMainOpen && openMainCount === 0) {
+          statusKey = 'main_closed';
+          statusLabel = 'Ana Vana Kapalı (Isı Yok)';
+          statusColor = 'rose';
+        } else if (oneMainClosed) {
+          statusKey = 'partial';
+          statusLabel = 'Tek Ana Vana Kapalı!';
+          statusColor = 'rose';
+        } else if (bothMainOpen && openCollectorCount === 5) {
+          statusKey = 'full';
+          statusLabel = 'Tam Açık (5/5)';
+          statusColor = 'orange';
+        } else if (bothMainOpen && openCollectorCount === 0) {
+          statusKey = 'main_closed';
+          statusLabel = 'Ana Vana Açık / 5 Kollektör Kapalı';
+          statusColor = 'rose';
+        } else {
+          statusKey = 'partial';
+          statusLabel = 'Kısık (' + openCollectorCount + '/5 Kollektör)';
+          statusColor = 'amber';
+        }
+
+        // Check if there is a physical mismatch worth noting (e.g., Main valves closed while collectors left open, or Main valves open while all 5 collectors closed, or 1 main valve closed)
+        const hasWarning =
+          oneMainClosed ||
+          (allMainClosed && openCollectorCount > 0) ||
+          (bothMainOpen && openCollectorCount === 0);
+
+        return {
+          openMainCount: openMainCount,
+          openCollectorCount: openCollectorCount,
+          bothMainOpen: bothMainOpen,
+          allMainClosed: allMainClosed,
+          oneMainClosed: oneMainClosed,
+          effectivePct: effectivePct,
+          statusKey: statusKey,
+          statusLabel: statusLabel,
+          statusColor: statusColor,
+          hasWarning: hasWarning
+        };
       }
-    }
-    return cells;
-  };
 
-  const checkInsToday = reservations.filter(r => r.checkIn === todayStr);
-  const checkOutsToday = reservations.filter(r => r.checkOut === todayStr);
-  const filteredTransactions = transactions.filter(tx => tx.date === reportFilterDate);
+      function updateStats() {
+        let fullCount = 0;
+        let partialCount = 0;
+        let closedCount = 0;
+        let occupiedCount = 0;
+        let activeCollectorsFlowing = 0;
 
-  const allExtrasArray = reservations.flatMap(r => 
-    (r.debts || []).filter(d => d.type === 'extra').map(d => ({...d, roomNo: r.roomNo, guestName: r.guestName}))
-  );
-  
-  const filteredExtras = allExtrasArray
-    .filter(extra => extra.dateAdded === extraFilterDate)
-    .sort((a,b) => b.id - a.id);
+        rooms.forEach(function (r) {
+          if (r.occupied) occupiedCount++;
+          const m = getRoomMetrics(r);
+          if (m.bothMainOpen && m.openCollectorCount === 5) {
+            fullCount++;
+          } else if (m.effectivePct === 0) {
+            closedCount++;
+          } else {
+            partialCount++;
+          }
+          if (m.bothMainOpen) {
+            activeCollectorsFlowing += m.openCollectorCount;
+          } else if (m.oneMainClosed) {
+            activeCollectorsFlowing += m.openCollectorCount * 0.5;
+          }
+        });
 
-  const extraTotals = filteredExtras.reduce((acc, curr) => {
-    const cur = curr.currency || 'TL';
-    if (!acc[cur]) acc[cur] = 0;
-    acc[cur] += (curr.amount || 0);
-    return acc;
-  }, { TL: 0, EUR: 0, USD: 0 });
+        const emptyCount = rooms.length - occupiedCount;
+        document.getElementById('statTotalRooms').textContent = String(rooms.length);
+        document.getElementById('statOccupiedRooms').textContent = occupiedCount + ' Dolu • ' + emptyCount + ' Boş';
+        document.getElementById('statFullHeat').textContent = String(fullCount);
+        document.getElementById('statPartialHeat').textContent = String(partialCount);
+        document.getElementById('statClosedRooms').textContent = String(closedCount);
 
-  if (!isLoggedIn) {
-    return (
-      <div className="flex h-screen w-screen bg-slate-100 items-center justify-center p-4 font-sans text-slate-800">
-        <div className="bg-white border border-slate-200 w-full max-w-md p-10 rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.05)] flex flex-col items-center animate-in fade-in zoom-in duration-500">
-          <div className="w-24 h-24 bg-gradient-to-br from-indigo-500 to-blue-600 rounded-3xl flex items-center justify-center mb-6 text-5xl shadow-lg shadow-indigo-500/30">🏨</div>
-          <h1 className="text-2xl font-black text-slate-800 tracking-tight mb-2">Doors of Cappadocia</h1>
-          <p className="text-sm text-slate-500 mb-8 font-medium">VIP Yönetim Paneli</p>
-          <form onSubmit={handleLogin} className="w-full space-y-5">
-            <div>
-              <label className="block text-xs text-slate-500 font-bold mb-2 uppercase tracking-wide">Kullanıcı Adı</label>
-              <input type="text" value={usernameInput} onChange={(e) => setUsernameInput(e.target.value)} placeholder="Kullanıcı adınız" className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all" />
-            </div>
-            <div>
-              <label className="block text-xs text-slate-500 font-bold mb-2 uppercase tracking-wide">Şifre</label>
-              <input type="password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} placeholder="Şifreniz" className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all" />
-            </div>
-            {loginError && <p className="text-rose-500 text-xs text-center font-bold bg-rose-50 py-2 rounded-lg">{loginError}</p>}
-            <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-indigo-200 transition-all text-sm mt-2 uppercase tracking-widest">Giriş Yap</button>
-          </form>
-        </div>
-      </div>
-    );
-  }
+        const roundedFlow = Math.round(activeCollectorsFlowing);
+        document.getElementById('statActiveCollectors').textContent = roundedFlow + ' / 100';
+        document.getElementById('statAvgPowerPct').textContent = '%' + roundedFlow;
+        document.getElementById('statCollectorBar').style.width = roundedFlow + '%';
+      }
 
-  return (
-    <div className="flex h-screen w-screen bg-slate-100 text-slate-800 font-sans overflow-hidden">
-      
-      <aside className="w-[280px] bg-white border-r border-slate-200 flex flex-col shadow-[10px_0_30px_rgba(0,0,0,0.03)] z-40 transition-all shrink-0">
-        <div className="h-20 flex items-center justify-center md:justify-start px-6 border-b border-slate-100 shrink-0">
-          <span className="text-3xl drop-shadow-sm">🏨</span>
-          <div className="flex flex-col ml-3">
-             <span className="font-black text-indigo-700 tracking-tight text-sm leading-tight">DOORS OF</span>
-             <span className="font-bold text-slate-500 tracking-widest text-[10px] leading-tight">CAPPADOCIA</span>
-          </div>
-        </div>
+      function renderRooms() {
+        updateStats();
+        const grid = document.getElementById('roomsGrid');
+        const emptyState = document.getElementById('emptyState');
+        grid.innerHTML = '';
 
-        <nav className="py-5 space-y-1 px-4 border-b border-slate-100 shrink-0">
-          <button onClick={() => setActiveTab("timeline")} className={`w-full flex items-center justify-start px-4 py-3 rounded-xl transition-all duration-300 ${activeTab === 'timeline' ? 'bg-indigo-50 text-indigo-700 font-bold shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-indigo-600 font-medium'}`}>
-            <span className="text-xl">📅</span><span className="ml-3 text-sm">Takvim & PMS</span>
-          </button>
-          <button onClick={() => setActiveTab("kasa")} className={`w-full flex items-center justify-start px-4 py-3 rounded-xl transition-all duration-300 ${activeTab === 'kasa' ? 'bg-emerald-50 text-emerald-700 font-bold shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-emerald-600 font-medium'}`}>
-            <span className="text-xl">💰</span><span className="ml-3 text-sm">Kasa İşlemleri</span>
-          </button>
-          <button onClick={() => setActiveTab("extras")} className={`w-full flex items-center justify-start px-4 py-3 rounded-xl transition-all duration-300 ${activeTab === 'extras' ? 'bg-orange-50 text-orange-700 font-bold shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-orange-600 font-medium'}`}>
-            <span className="text-xl">🧾</span><span className="ml-3 text-sm">Günlük Ekstra & Fiş</span>
-          </button>
-          <button onClick={() => setActiveTab("hk")} className={`w-full flex items-center justify-start px-4 py-3 rounded-xl transition-all duration-300 ${activeTab === 'hk' ? 'bg-purple-50 text-purple-700 font-bold shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-purple-600 font-medium'}`}>
-            <span className="text-xl">🧹</span><span className="ml-3 text-sm">Kat Hizmetleri (HK)</span>
-          </button>
-        </nav>
+        const filtered = rooms.filter(function (room) {
+          const m = getRoomMetrics(room);
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-4 bg-slate-50/50">
-          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 px-2 flex justify-between items-center">
-            <span>Bugünün Akışı</span> <span className="bg-slate-200 text-slate-600 px-2 rounded-md">{todayStr}</span>
-          </h4>
-          
-          <div className="bg-white border border-emerald-100 rounded-2xl p-3 shadow-sm mb-4 transition-transform hover:-translate-y-1">
-            <h5 className="text-xs font-bold text-emerald-600 mb-2 flex justify-between items-center">
-              <span>Giriş (Check-In)</span> <span className="bg-emerald-100 text-emerald-700 px-2 rounded-md">{checkInsToday.length}</span>
-            </h5>
-            <div className="space-y-1.5 max-h-36 overflow-y-auto custom-scrollbar">
-              {checkInsToday.length === 0 ? <p className="text-[10px] text-slate-400 italic">Giriş yok.</p> : checkInsToday.map(r => (
-                <div key={r.id} className="text-[11px] font-bold text-slate-700 bg-slate-50 p-2 rounded-lg border border-slate-100 flex justify-between items-center">
-                  <span>{r.roomNo} - <span className="font-medium">{r.guestName.substring(0, 10)}</span></span>
-                  <span className={`w-2 h-2 rounded-full ${r.status === 'checked_in' ? 'bg-emerald-500' : 'bg-slate-300'}`}></span>
-                </div>
-              ))}
-            </div>
-          </div>
+          if (occupancyFilter === 'occupied' && !room.occupied) return false;
+          if (occupancyFilter === 'empty' && room.occupied) return false;
 
-          <div className="bg-white border border-rose-100 rounded-2xl p-3 shadow-sm mb-4 transition-transform hover:-translate-y-1">
-            <h5 className="text-xs font-bold text-rose-600 mb-2 flex justify-between items-center">
-              <span>Çıkış (Check-Out)</span> <span className="bg-rose-100 text-rose-700 px-2 rounded-md">{checkOutsToday.length}</span>
-            </h5>
-            <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
-              {checkOutsToday.length === 0 ? <p className="text-[10px] text-slate-400 italic">Çıkış yok.</p> : checkOutsToday.map(r => {
-                const { remaining, currency } = getCalc(r);
-                const debtSummary = (r.debts || []).map(d => `${(d.category || d.title).split(' ')[0]}: ${d.amount}`).join(', ');
-                return (
-                  <div key={r.id} className="text-[11px] font-bold text-slate-700 bg-slate-50 p-2 rounded-lg border border-slate-100 flex flex-col gap-1">
-                    <div className="flex justify-between items-center">
-                      <span>{r.roomNo} - <span className="font-medium">{r.guestName.substring(0, 10)}</span></span>
-                      {remaining > 0 ? <span className="text-[9px] bg-rose-100 text-rose-600 px-1.5 rounded font-black">{remaining} {currency}</span> : <span className="text-[9px] bg-emerald-100 text-emerald-600 px-1.5 rounded font-black">Ödendi</span>}
-                    </div>
-                    {debtSummary && <div className="text-[9px] text-slate-500 font-medium italic border-t border-slate-200 pt-1 mt-1 truncate">{debtSummary}</div>}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </div>
+          if (activeFilter === 'full' && !(m.bothMainOpen && m.openCollectorCount === 5)) return false;
+          if (activeFilter === 'partial' && !(m.effectivePct > 0 && m.effectivePct < 100)) return false;
+          if (activeFilter === 'main_closed' && m.effectivePct !== 0) return false;
+          if (activeFilter === 'mismatch' && !m.hasWarning) return false;
 
-        <div className="p-4 border-t border-slate-200 bg-white shrink-0">
-          <button onClick={handleLogout} className="w-full flex items-center justify-center px-4 py-2.5 rounded-xl text-rose-500 hover:bg-rose-50 transition-all font-bold text-xs uppercase tracking-wider">Güvenli Çıkış</button>
-        </div>
-      </aside>
+          if (searchQuery.trim() !== '') {
+            const q = searchQuery.trim().toLowerCase();
+            const matchNum = String(room.id).includes(q);
+            const matchNote = (room.note || '').toLowerCase().includes(q);
+            if (!matchNum && !matchNote) return false;
+          }
+          return true;
+        });
 
-      <div className="flex-1 flex flex-col overflow-hidden relative bg-white">
-        
-        <header className="h-20 bg-white/90 backdrop-blur-xl border-b border-slate-200 px-8 flex justify-between items-center z-20 shrink-0">
-          <h2 className="text-xl font-black text-slate-800 tracking-tight">
-            {activeTab === 'timeline' && 'Oda & Rezervasyon Akışı'}
-            {activeTab === 'kasa' && 'Ana Kasa Gelir & Gider Yönetimi'}
-            {activeTab === 'extras' && 'Gün Sonu Fiş & Ekstra Raporu'}
-            {activeTab === 'hk' && 'Günlük Kat Hizmetleri Logları'}
-          </h2>
-          
-          {activeTab === 'timeline' && (
-             <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl p-1.5 shadow-sm">
-               <button onClick={() => shiftDate(-7)} className="px-4 py-1.5 text-slate-500 hover:text-indigo-600 hover:bg-white rounded-lg font-black transition-all text-sm shadow-sm border border-transparent hover:border-slate-200">← 7 Gün</button>
-               <button onClick={() => shiftDate(-1)} className="px-3 py-1.5 text-slate-500 hover:text-indigo-600 hover:bg-white rounded-lg font-black transition-all text-sm shadow-sm border border-transparent hover:border-slate-200">←</button>
-               <button onClick={() => setViewStartDate(todayStr)} className="text-xs font-black text-indigo-700 bg-white shadow-sm px-6 py-2 rounded-lg transition-all border border-slate-200 uppercase tracking-wider">Bugün</button>
-               <button onClick={() => shiftDate(1)} className="px-3 py-1.5 text-slate-500 hover:text-indigo-600 hover:bg-white rounded-lg font-black transition-all text-sm shadow-sm border border-transparent hover:border-slate-200">→</button>
-               <button onClick={() => shiftDate(7)} className="px-4 py-1.5 text-slate-500 hover:text-indigo-600 hover:bg-white rounded-lg font-black transition-all text-sm shadow-sm border border-transparent hover:border-slate-200">7 Gün →</button>
-             </div>
-          )}
-        </header>
+        if (filtered.length === 0) {
+          emptyState.classList.remove('hidden');
+        } else {
+          emptyState.classList.add('hidden');
+        }
 
-        {activeTab === "timeline" && (
-          <div className="flex-1 overflow-auto relative custom-scrollbar bg-slate-50/30 animate-in fade-in duration-500">
-            <table className="w-full text-left border-collapse table-fixed select-none">
-              <thead className="bg-slate-100 text-slate-600">
-                <tr>
-                  <th className="sticky left-0 top-0 bg-white z-30 w-[70px] border-r border-b border-slate-200 text-center shadow-[2px_0_5px_rgba(0,0,0,0.03)]"><span className="text-[10px] font-black tracking-widest text-slate-400">ODA</span></th>
-                  {visibleDays.map(dayObj => (
-                    <th key={dayObj.dateStr} className={`w-[55px] sticky top-0 bg-white/95 backdrop-blur-md z-20 border-r border-b border-slate-200 text-center py-2 ${dayObj.dateStr === todayStr ? 'bg-indigo-50/80 border-b-2 border-b-indigo-500 shadow-inner' : ''}`}>
-                      <div className={`text-sm font-black ${dayObj.dateStr === todayStr ? 'text-indigo-600' : 'text-slate-700'}`}>{dayObj.dayNum}</div>
-                      <div className="text-[9px] font-bold uppercase text-slate-400">{dayObj.dayName}</div>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="bg-white">
-                {rooms.map(room => {
-                  const roomTodayHk = housekeeping.find(h => h.roomNo === room && h.date === todayStr);
-                  const status = roomTodayHk ? roomTodayHk.status : 'Kirli';
-                  let dotColor = "bg-rose-400";
-                  if (status === 'Temiz') dotColor = "bg-emerald-400";
-                  if (status === 'Bakım') dotColor = "bg-sky-400";
-                  if (status === 'Arızalı') dotColor = "bg-rose-600 animate-pulse";
+        filtered.forEach(function (room) {
+          const m = getRoomMetrics(room);
 
-                  return (
-                    <tr key={room} className="hover:bg-slate-50 group/row transition-colors">
-                      <td className="sticky left-0 bg-white group-hover/row:bg-slate-50 z-20 border-r border-b border-slate-200 text-center text-slate-700 shadow-[2px_0_5px_rgba(0,0,0,0.02)] h-[36px] font-black text-[11px]">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <span>{room}</span>
-                          <span className={`w-2 h-2 rounded-full ${dotColor}`} title={status}></span>
-                        </div>
-                      </td>
-                      {renderRowCells(room)}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+          let borderClass = 'border-slate-800 hover:border-slate-700';
+          let badgeClass = 'bg-slate-800 text-slate-300';
+          if (m.statusColor === 'orange') {
+            borderClass = 'border-orange-500/30 hover:border-orange-500/60';
+            badgeClass = 'bg-orange-500/15 text-orange-300 border border-orange-500/30';
+          } else if (m.statusColor === 'amber') {
+            borderClass = 'border-amber-500/30 hover:border-amber-500/60';
+            badgeClass = 'bg-amber-500/15 text-amber-300 border border-amber-500/30';
+          } else if (m.statusColor === 'rose') {
+            borderClass = 'border-rose-500/30 hover:border-rose-500/60';
+            badgeClass = 'bg-rose-500/15 text-rose-300 border border-rose-500/30';
+          }
 
-        {/* --- FİŞ & EKSTRA TAKİBİ --- */}
-        {activeTab === "extras" && (
-          <div className="flex-1 p-8 overflow-y-auto bg-slate-50 animate-in fade-in duration-500">
-            <div className="max-w-7xl mx-auto w-full">
-              
-              <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-                <h3 className="text-xl font-black text-slate-800 tracking-tight">🧾 Odalara Yazılan Fişler (Teras Bar, Ütü vb.)</h3>
-                <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-slate-200 shadow-sm">
-                  <button onClick={() => setExtraFilterDate(yesterdayStr)} className="px-4 py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-50 transition-all">Dün</button>
-                  <button onClick={() => setExtraFilterDate(todayStr)} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${extraFilterDate === todayStr ? 'bg-orange-500 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>Bugün</button>
-                  <input type="date" value={extraFilterDate} onChange={e => setExtraFilterDate(e.target.value)} className="bg-transparent px-2 py-1 text-xs text-slate-700 font-bold outline-none cursor-pointer" />
-                </div>
-              </div>
+          const card = document.createElement('div');
+          card.className = 'bg-slate-900 border ' + borderClass + ' rounded-2xl p-4 flex flex-col justify-between transition shadow-sm';
 
-              <div className="grid grid-cols-3 gap-4 mb-6">
-                <div className="bg-white border border-orange-100 rounded-2xl p-5 shadow-sm border-l-4 border-l-orange-400">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Seçili Gün TL Ciro</h4>
-                  <div className="text-2xl font-black text-slate-800">{extraTotals.TL.toLocaleString()} TL</div>
-                </div>
-                <div className="bg-white border border-orange-100 rounded-2xl p-5 shadow-sm border-l-4 border-l-orange-400">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Seçili Gün USD Ciro</h4>
-                  <div className="text-2xl font-black text-slate-800">{extraTotals.USD.toLocaleString()} USD</div>
-                </div>
-                <div className="bg-white border border-orange-100 rounded-2xl p-5 shadow-sm border-l-4 border-l-orange-400">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Seçili Gün EUR Ciro</h4>
-                  <div className="text-2xl font-black text-slate-800">{extraTotals.EUR.toLocaleString()} EUR</div>
-                </div>
-              </div>
+          // Top row: Room number + occupancy + status badge
+          let warningBanner = '';
+          if (m.allMainClosed && m.openCollectorCount > 0) {
+            warningBanner = '<div class="mt-2 px-2.5 py-1 rounded-lg bg-rose-950/70 border border-rose-800/60 text-[11px] text-rose-300 flex items-center gap-1.5">' +
+              '<span class="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0"></span>' +
+              '<span>Ana vanalar kapalı! (' + m.openCollectorCount + ' kollektör mandalı açık ama su geçmiyor)</span>' +
+              '</div>';
+          } else if (m.oneMainClosed) {
+            warningBanner = '<div class="mt-2 px-2.5 py-1 rounded-lg bg-rose-950/70 border border-rose-800/60 text-[11px] text-rose-300 flex items-center gap-1.5">' +
+              '<span class="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0"></span>' +
+              '<span>Ana vanalardan biri kapalı! Devirdaim için 2 ana vana da açık olmalı.</span>' +
+              '</div>';
+          } else if (m.bothMainOpen && m.openCollectorCount === 0) {
+            warningBanner = '<div class="mt-2 px-2.5 py-1 rounded-lg bg-amber-950/70 border border-amber-800/60 text-[11px] text-amber-300 flex items-center gap-1.5">' +
+              '<span class="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"></span>' +
+              '<span>Ana vanalar açık ama 5 kollektörün tamamı kapalı!</span>' +
+              '</div>';
+          }
 
-              <div className="bg-white border border-slate-100 rounded-3xl shadow-lg shadow-slate-200/50 overflow-hidden">
-                <div className="overflow-auto custom-scrollbar">
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-50 text-slate-500 sticky top-0 border-b border-slate-100">
-                      <tr>
-                        <th className="p-4 font-bold">Oda & Misafir</th>
-                        <th className="p-4 font-bold">Tür / Alan</th>
-                        <th className="p-4 font-bold">Fiş Numarası</th>
-                        <th className="p-4 font-bold">Detay / Not</th>
-                        <th className="p-4 text-right font-bold">Tutar</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredExtras.length === 0 ? <tr><td colSpan="5" className="text-center p-8 text-slate-400 italic font-medium">Bu tarihte odaya yazılmış ekstra fiş bulunmuyor.</td></tr> :
-                        filteredExtras.map((extra, index) => (
-                          <tr key={index} className="border-b border-slate-50 hover:bg-orange-50/40 transition-colors">
-                            <td className="p-4 font-black text-slate-700">Oda {extra.roomNo} <span className="text-xs font-medium text-slate-500 block">{extra.guestName}</span></td>
-                            <td className="p-4 font-bold text-orange-500">{extra.category}</td>
-                            <td className="p-4"><span className="px-3 py-1 bg-white border border-slate-200 rounded-lg text-[11px] font-black text-slate-600">{extra.receiptNo || 'Fiş Yok'}</span></td>
-                            <td className="p-4 text-slate-600 font-medium">{extra.title.split('-')[1]?.trim() || '-'}</td>
-                            <td className="p-4 text-right font-black text-slate-800">{extra.amount.toLocaleString()} {extra.currency}</td>
-                          </tr>
-                        ))
-                      }
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+          // Main Valves Buttons HTML
+          let mainValvesHtml = '';
+          for (let vIdx = 0; vIdx < 2; vIdx++) {
+            const isOpen = room.mainValves[vIdx];
+            const btnStyle = isOpen
+              ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25'
+              : 'bg-rose-950/50 border-rose-800/50 text-rose-400 hover:bg-rose-900/40';
+            const dotStyle = isOpen ? 'bg-emerald-400' : 'bg-rose-500';
+            mainValvesHtml +=
+              '<button type="button" data-action="toggle-main" data-room="' + room.id + '" data-index="' + vIdx + '" ' +
+              'class="flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-xs font-medium transition ' + btnStyle + '" ' +
+              'title="Ana Vana ' + (vIdx + 1) + ' durumunu değiştirmek için tıklayın">' +
+              '<span class="flex items-center gap-1.5">' +
+              '<span class="w-2 h-2 rounded-full ' + dotStyle + '"></span>' +
+              '<span>Ana Vana ' + (vIdx + 1) + '</span>' +
+              '</span>' +
+              '<span class="text-[10px] font-bold uppercase">' + (isOpen ? 'AÇIK' : 'KAPALI') + '</span>' +
+              '</button>';
+          }
 
-        {/* --- ANA KASA EKRANI (Cari'den Bağımsız) --- */}
-        {activeTab === "kasa" && (
-          <div className="flex-1 flex flex-col p-8 overflow-y-auto bg-slate-50 animate-in fade-in duration-500">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 max-w-7xl mx-auto w-full">
-              <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-xl shadow-slate-200/50 hover:-translate-y-1 transition-transform">
-                <h3 className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-2">Türk Lirası Kasa</h3>
-                <div className={`text-4xl font-black tracking-tight ${kasaBalances.TL.total >= 0 ? 'text-slate-800' : 'text-rose-500'}`}>{kasaBalances.TL.total.toLocaleString()} <span className="text-xl text-slate-400 font-medium">TL</span></div>
-              </div>
-              <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-xl shadow-slate-200/50 hover:-translate-y-1 transition-transform">
-                <h3 className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-2">Dolar Kasa</h3>
-                <div className={`text-4xl font-black tracking-tight ${kasaBalances.USD.total >= 0 ? 'text-slate-800' : 'text-rose-500'}`}>{kasaBalances.USD.total.toLocaleString()} <span className="text-xl text-slate-400 font-medium">USD</span></div>
-              </div>
-              <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-xl shadow-slate-200/50 hover:-translate-y-1 transition-transform">
-                <h3 className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-2">Euro Kasa</h3>
-                <div className={`text-4xl font-black tracking-tight ${kasaBalances.EUR.total >= 0 ? 'text-slate-800' : 'text-rose-500'}`}>{kasaBalances.EUR.total.toLocaleString()} <span className="text-xl text-slate-400 font-medium">EUR</span></div>
-              </div>
-            </div>
+          // 5 Collectors Buttons HTML
+          let collectorsHtml = '';
+          for (let cIdx = 0; cIdx < 5; cIdx++) {
+            const cOpen = room.collectors[cIdx];
+            const flowing = cOpen && m.bothMainOpen;
+            const restrictedFlow = cOpen && m.oneMainClosed;
 
-            <div className="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-lg shadow-slate-200/50 h-fit border-t-4 border-t-indigo-500">
-                <h3 className="text-sm font-black text-indigo-700 mb-2 uppercase tracking-wider">Ana Kasaya Manuel Giriş / Çıkış</h3>
-                <p className="text-[10px] text-slate-400 font-medium mb-5">Otelin kasasına giren/çıkan paraları buradan işleyin.</p>
-                <div className="space-y-4">
-                  <div className="flex gap-2 bg-slate-50 p-1 rounded-2xl border border-slate-100">
-                    <button onClick={() => setKasaType("income")} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${kasaType==='income' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>GELİR (+)</button>
-                    <button onClick={() => setKasaType("expense")} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${kasaType==='expense' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>GİDER / MASRAF (-)</button>
-                  </div>
-                  
-                  <select value={kasaCategory} onChange={e=>setKasaCategory(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm text-slate-700 outline-none focus:border-indigo-500 font-medium transition-all shadow-sm">
-                    <option value="Teras Bar (Dış Müşteri)">Teras Bar (Dış Müşteri)</option>
-                    <option value="Market / Mutfak Gideri">Market / Mutfak Gideri</option>
-                    <option value="Personel / Maaş / Avans">Personel / Maaş / Avans</option>
-                    <option value="Fatura Ödemesi">Fatura Ödemesi</option>
-                    <option value="Genel Gider / Masraf">Genel Gider / Masraf</option>
-                  </select>
+            let cStyle = '';
+            if (flowing) {
+              cStyle = 'bg-orange-500 text-slate-950 border-orange-400 font-bold shadow-sm shadow-orange-500/20 hover:bg-orange-400';
+            } else if (restrictedFlow) {
+              cStyle = 'bg-amber-500/30 text-amber-200 border-amber-500/50 font-semibold hover:bg-amber-500/40';
+            } else if (cOpen && m.allMainClosed) {
+              // Knob is open, but main valve is closed!
+              cStyle = 'bg-slate-800 text-amber-300/80 border-amber-500/40 border-dashed hover:bg-slate-700';
+            } else {
+              cStyle = 'bg-slate-950 text-slate-500 border-slate-800 hover:bg-slate-800 hover:text-slate-300';
+            }
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <input type="number" value={kasaAmount} onChange={e=>setKasaAmount(e.target.value)} placeholder="Tutar" className="bg-white border border-slate-200 rounded-xl p-3.5 text-sm text-slate-800 outline-none focus:border-indigo-500 shadow-sm" />
-                    <select value={kasaCurrency} onChange={e=>setKasaCurrency(e.target.value)} className="bg-white border border-slate-200 rounded-xl p-3.5 text-sm text-slate-700 font-bold outline-none shadow-sm">
-                      <option value="TL">TL</option><option value="USD">USD</option><option value="EUR">EUR</option>
-                    </select>
-                  </div>
+            const statusSub = cOpen ? 'AÇIK' : 'KAPALI';
+            collectorsHtml +=
+              '<button type="button" data-action="toggle-collector" data-room="' + room.id + '" data-index="' + cIdx + '" ' +
+              'class="flex flex-col items-center justify-center py-1.5 rounded-lg border text-xs transition ' + cStyle + '" ' +
+              'title="' + COLLECTOR_LABELS[cIdx] + ': ' + statusSub + '">' +
+              '<span class="text-[11px] leading-none">K' + (cIdx + 1) + '</span>' +
+              '<span class="text-[9px] mt-0.5 opacity-85">' + (cOpen ? 'Açık' : 'Kapalı') + '</span>' +
+              '</button>';
+          }
 
-                  <select value={kasaMethod} onChange={e=>setKasaMethod(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl p-3.5 text-sm text-slate-700 outline-none shadow-sm">
-                    <option value="cash">Nakit Kasası</option><option value="cc">Kredi Kartı / POS Banka Hesabı</option>
-                  </select>
+          const occBadge = room.occupied
+            ? '<button type="button" data-action="toggle-occupancy" data-room="' + room.id + '" class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25 transition" title="Doluluk durumunu değiştir">DOLU</button>'
+            : '<button type="button" data-action="toggle-occupancy" data-room="' + room.id + '" class="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700 transition" title="Doluluk durumunu değiştir">BOŞ</button>';
 
-                  <input type="text" value={kasaDesc} onChange={e=>setKasaDesc(e.target.value)} placeholder="Açıklama (Örn: A101 İçecek Alışverişi)" className="w-full bg-white border border-slate-200 rounded-xl p-3.5 text-sm text-slate-800 outline-none focus:border-indigo-500 shadow-sm" />
-                  
-                  <button onClick={handleAddManualTransaction} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-indigo-200 transition-all text-sm uppercase tracking-widest mt-2">KASAYA İŞLE</button>
-                </div>
-              </div>
+          card.innerHTML =
+            '<div>' +
+              '<div class="flex items-start justify-between gap-2">' +
+                '<div class="flex items-center gap-2">' +
+                  '<span class="text-lg font-bold text-white tracking-tight">Oda ' + room.id + '</span>' +
+                  occBadge +
+                '</div>' +
+                '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold ' + badgeClass + '">' +
+                  m.statusLabel +
+                '</span>' +
+              '</div>' +
 
-              <div className="lg:col-span-2 bg-white border border-slate-100 rounded-3xl p-6 shadow-lg shadow-slate-200/50 flex flex-col h-[580px]">
-                <div className="flex flex-col md:flex-row justify-between items-center border-b border-slate-100 pb-4 mb-4 gap-4 shrink-0">
-                  <h3 className="text-sm font-black text-slate-700 uppercase tracking-wider">Kasa Günlük İşlem / Z Raporu</h3>
-                  <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-200">
-                    <button onClick={() => setReportFilterDate(yesterdayStr)} className="px-4 py-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-white hover:shadow-sm transition-all">Dün</button>
-                    <button onClick={() => setReportFilterDate(todayStr)} className="px-4 py-2 rounded-lg text-xs font-bold bg-white text-indigo-600 shadow-sm transition-all">Bugün</button>
-                    <input type="date" value={reportFilterDate} onChange={e => setReportFilterDate(e.target.value)} className="bg-transparent px-2 py-1 text-xs text-slate-700 font-bold outline-none cursor-pointer" />
-                  </div>
-                </div>
+              warningBanner +
 
-                <div className="flex-1 overflow-auto custom-scrollbar">
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-50 text-slate-500 sticky top-0 shadow-sm border-b border-slate-100">
-                      <tr><th className="p-4 rounded-tl-xl font-bold">Kategori</th><th className="p-4 font-bold">Detaylı Açıklama</th><th className="p-4 font-bold">Yöntem</th><th className="p-4 text-right rounded-tr-xl font-bold">Tutar</th></tr>
-                    </thead>
-                    <tbody>
-                      {filteredTransactions.length === 0 ? <tr><td colSpan="4" className="text-center p-8 text-slate-400 italic font-medium">Bu tarihte kayıtlı işlem bulunmuyor.</td></tr> :
-                        filteredTransactions.map(tx => (
-                          <tr key={tx.id} className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors">
-                            <td className="p-4 font-bold text-slate-700">{tx.category || 'Genel'}</td>
-                            <td className="p-4 text-slate-600 font-medium">{tx.desc}</td>
-                            <td className="p-4"><span className="px-3 py-1 bg-white border border-slate-200 rounded-lg text-[10px] font-black text-slate-500 uppercase">{tx.method === 'cash' ? 'Nakit' : 'POS'}</span></td>
-                            <td className={`p-4 text-right font-black ${tx.type === 'income' ? 'text-emerald-500' : 'text-rose-500'}`}>{tx.type === 'income' ? '+' : '-'}{tx.amount.toLocaleString()} {tx.currency || 'TL'}</td>
-                          </tr>
-                        ))
-                      }
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+              '<!-- 2 Main Valves -->' +
+              '<div class="mt-3">' +
+                '<div class="flex items-center justify-between text-[11px] text-slate-400 mb-1">' +
+                  '<span>Ana Vanalar (' + m.openMainCount + '/2 Açık)</span>' +
+                  '<span class="font-medium text-slate-300">Isı Gücü: %' + m.effectivePct + '</span>' +
+                '</div>' +
+                '<div class="grid grid-cols-2 gap-1.5">' +
+                  mainValvesHtml +
+                '</div>' +
+              '</div>' +
 
-        {/* --- HOUSEKEEPING (KAT HİZMETLERİ) EKRANI --- */}
-        {activeTab === "hk" && (
-          <div className="flex-1 flex flex-col p-8 overflow-y-auto bg-slate-50 animate-in fade-in duration-500">
-            <div className="max-w-7xl mx-auto w-full">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 border-b border-slate-200 pb-6 gap-4">
-                <h3 className="text-xl font-black text-slate-800 tracking-tight">🧹 Günlük Kat Hizmetleri (Housekeeping) Logları</h3>
-                <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm">
-                  <button onClick={() => setHkFilterDate(yesterdayStr)} className="px-4 py-2 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 transition-colors">Dün</button>
-                  <button onClick={() => setHkFilterDate(todayStr)} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-md transition-all">Bugün</button>
-                  <button onClick={() => setHkFilterDate(tomorrowStr)} className="px-4 py-2 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 transition-colors">Yarın</button>
-                  <input type="date" value={hkFilterDate} onChange={e => setHkFilterDate(e.target.value)} className="bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-xs text-slate-700 font-bold outline-none cursor-pointer" />
-                </div>
-              </div>
+              '<!-- 5 Collectors -->' +
+              '<div class="mt-3">' +
+                '<div class="flex items-center justify-between text-[11px] text-slate-400 mb-1">' +
+                  '<span>Kollektör Hatları (' + m.openCollectorCount + '/5 Açık)</span>' +
+                  '<span class="text-[10px] text-slate-500">Tıkla Aç/Kapat</span>' +
+                '</div>' +
+                '<div class="grid grid-cols-5 gap-1.5">' +
+                  collectorsHtml +
+                '</div>' +
+              '</div>' +
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {rooms.map(room => {
-                  const roomHk = housekeeping.find(h => h.roomNo === room && h.date === hkFilterDate) || { status: 'Kirli', note: '' };
-                  const st = roomHk.status;
-                  let badgeColor = "bg-rose-50 text-rose-600 border-rose-200";
-                  if (st === 'Temiz') badgeColor = "bg-emerald-50 text-emerald-700 border-emerald-200";
-                  if (st === 'Bakım') badgeColor = "bg-sky-50 text-sky-700 border-sky-200";
-                  if (st === 'Arızalı') badgeColor = "bg-rose-100 text-rose-700 border-rose-300 animate-pulse";
+              (room.note
+                ? '<div class="mt-2.5 px-2.5 py-1.5 rounded-lg bg-slate-950/90 border border-slate-800/80 text-[11px] text-slate-300 line-clamp-2" title="' + room.note.replace(/"/g, '&quot;') + '">' +
+                  '<span class="text-amber-400 font-medium">Not:</span> ' + room.note +
+                  '</div>'
+                : '') +
+            '</div>' +
 
-                  return (
-                    <div key={room} className="bg-white border border-slate-100 rounded-3xl p-6 shadow-lg shadow-slate-200/40 hover:-translate-y-1 transition-transform flex flex-col justify-between">
-                      <div className="flex justify-between items-start mb-5 border-b border-slate-50 pb-4">
-                        <div>
-                          <h4 className="text-2xl font-black text-slate-800 mb-2">Oda {room}</h4>
-                          <span className={`inline-block px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase border ${badgeColor}`}>
-                            {st === 'Temiz' && '✨ Temiz (Girildi)'}
-                            {st === 'Kirli' && '🔴 Kirli (Girilmedi)'}
-                            {st === 'Bakım' && '🛠️ Bakım Yapıldı'}
-                            {st === 'Arızalı' && '🚫 Arızalı (Kapalı)'}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 mb-4">
-                        <button onClick={() => handleUpdateHK(room, 'Temiz', roomHk.note)} className={`py-2.5 rounded-xl text-[10px] font-bold transition-all ${st === 'Temiz' ? 'bg-emerald-500 text-white shadow-md' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>TEMİZLE</button>
-                        <button onClick={() => handleUpdateHK(room, 'Kirli', roomHk.note)} className={`py-2.5 rounded-xl text-[10px] font-bold transition-all ${st === 'Kirli' ? 'bg-rose-500 text-white shadow-md' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>KİRLİ / GİRİLMEDİ</button>
-                        <button onClick={() => handleUpdateHK(room, 'Bakım', roomHk.note)} className={`py-2.5 rounded-xl text-[10px] font-bold transition-all ${st === 'Bakım' ? 'bg-sky-500 text-white shadow-md' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>BAKIM YAPILDI</button>
-                        <button onClick={() => handleUpdateHK(room, 'Arızalı', roomHk.note)} className={`py-2.5 rounded-xl text-[10px] font-bold transition-all ${st === 'Arızalı' ? 'bg-rose-600 text-white shadow-md' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>ARIZALI / KAPALI</button>
-                      </div>
-                      <div className="mt-auto bg-slate-50 p-2 rounded-xl border border-slate-100 flex items-center focus-within:border-indigo-300 transition-colors">
-                        <span className="text-xs px-2">📝</span>
-                        <input type="text" defaultValue={roomHk.note} onBlur={(e) => { if(e.target.value !== roomHk.note) handleUpdateHK(room, st, e.target.value); }} placeholder="Özel Not (Çarşaf değişti vs.)" className="w-full bg-transparent text-xs text-slate-700 font-medium outline-none" />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
+            '<div class="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between gap-1">' +
+              '<div class="flex items-center gap-1">' +
+                '<button type="button" data-action="quick-full" data-room="' + room.id + '" class="px-2 py-1 rounded text-[10px] font-medium bg-slate-800 hover:bg-orange-500/20 text-slate-300 hover:text-orange-300 transition" title="2 Ana Vana ve 5 Kollektörü Aç">Tam Aç</button>' +
+                '<button type="button" data-action="quick-eco" data-room="' + room.id + '" class="px-2 py-1 rounded text-[10px] font-medium bg-slate-800 hover:bg-amber-500/20 text-slate-300 hover:text-amber-300 transition" title="Ana Vanaları Aç, 2 Kollektörü Kapat (3/5)">3/5 Kıs</button>' +
+                '<button type="button" data-action="quick-close-main" data-room="' + room.id + '" class="px-2 py-1 rounded text-[10px] font-medium bg-slate-800 hover:bg-rose-500/20 text-slate-300 hover:text-rose-300 transition" title="Ana Vanaları Kapat">Ana Vana Kapat</button>' +
+              '</div>' +
+              '<button type="button" data-action="open-detail" data-room="' + room.id + '" class="px-2 py-1 rounded text-[10px] font-semibold text-amber-400 hover:bg-amber-500/10 transition">' +
+                'Detay / Not' +
+              '</button>' +
+            '</div>';
 
-      </div>
+          grid.appendChild(card);
+        });
+      }
 
-      {/* REZERVASYON MODALI (CARİ KISIMLARI TAMAMEN KALDIRILDI) */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex justify-center items-center p-4 z-50 animate-in fade-in duration-200">
-          <div className="bg-white border border-slate-100 w-full max-w-6xl rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[95vh] animate-in zoom-in-95 duration-300">
-            <div className="bg-slate-50 p-6 border-b border-slate-200 flex justify-between items-center shrink-0">
-              <h2 className="text-xl font-black text-indigo-700 tracking-tight">Oda #{formData.roomNo} <span className="text-slate-400 font-medium text-lg ml-2">| {formData.guestName || 'Yeni Kayıt'}</span></h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-rose-500 transition-colors text-2xl bg-white w-10 h-10 rounded-full flex items-center justify-center shadow-sm border border-slate-100">✕</button>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto p-8 bg-white flex flex-col md:flex-row gap-8 custom-scrollbar">
-              
-              <div className="flex-1 space-y-6">
-                <div>
-                  <h3 className="text-sm font-black text-slate-800 border-b border-slate-100 pb-2 mb-4 uppercase tracking-wider">Konaklama Bilgileri</h3>
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="block text-[10px] text-slate-500 font-bold mb-1.5 uppercase">Misafir Adı</label>
-                      <input type="text" value={formData.guestName} onChange={e => setFormData({...formData, guestName: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm text-slate-800 font-bold outline-none focus:border-indigo-500 transition-all" />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] text-indigo-600 font-bold mb-1.5 uppercase">Durum</label>
-                      <select value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})} className="w-full bg-indigo-50 border border-indigo-100 rounded-xl p-3.5 text-sm text-indigo-700 font-bold outline-none focus:border-indigo-500 transition-all">
-                        <option value="waiting">🟡 Bekleniyor</option>
-                        <option value="checked_in">🟢 İçeride (In-House)</option>
-                        <option value="checked_out">🔴 Çıkış Yaptı</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="block text-[10px] text-slate-500 font-bold mb-1.5 uppercase">Giriş Tarihi</label>
-                      <input type="date" value={formData.checkIn} onChange={e => setFormData({...formData, checkIn: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm text-slate-800 font-medium outline-none focus:border-indigo-500" />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] text-slate-500 font-bold mb-1.5 uppercase">Çıkış Tarihi</label>
-                      <input type="date" value={formData.checkOut} onChange={e => setFormData({...formData, checkOut: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm text-slate-800 font-medium outline-none focus:border-indigo-500" />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="block text-[10px] text-slate-500 font-bold mb-1.5 uppercase">Telefon</label>
-                      <input type="text" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="05..." className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm text-slate-800 outline-none focus:border-indigo-500" />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] text-slate-500 font-bold mb-1.5 uppercase">Özel Not</label>
-                      <input type="text" value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})} placeholder="Balayı vb." className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm text-slate-800 outline-none focus:border-indigo-500" />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="col-span-2">
-                      <label className="block text-[10px] text-slate-500 font-bold mb-1.5 uppercase">Oda Konaklama Ücreti</label>
-                      <input type="number" value={formData.balance} onChange={e => setFormData({...formData, balance: e.target.value})} className="w-full bg-white border border-slate-200 shadow-inner rounded-xl p-3.5 text-lg font-black text-slate-800 outline-none focus:border-indigo-500" />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] text-slate-500 font-bold mb-1.5 uppercase">Ana Birim</label>
-                      <select value={formData.currency} onChange={e => setFormData({...formData, currency: e.target.value})} className="w-full bg-white border border-slate-200 shadow-inner rounded-xl p-3.5 text-lg font-black text-indigo-600 outline-none focus:border-indigo-500">
-                        <option value="TL">TL</option><option value="USD">USD</option><option value="EUR">EUR</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
+      function renderLogs() {
+        const badge = document.getElementById('logCountBadge');
+        badge.textContent = String(logs.length);
+        const container = document.getElementById('logListContainer');
+        container.innerHTML = '';
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100 shadow-sm">
-                    <h3 className="text-xs font-black text-indigo-700 border-b border-indigo-100 pb-2 mb-3 uppercase tracking-wider">Aktivite / Tur Satışı</h3>
-                    <div className="space-y-2 mb-3">
-                      <select value={tourType} onChange={e=>setTourType(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs text-slate-700 font-bold outline-none">
-                        {activities.map(a => <option key={a} value={a}>{a}</option>)}
-                      </select>
-                    </div>
-                    <div className="flex gap-2">
-                      <input type="number" value={tourPrice} onChange={e=>setTourPrice(e.target.value)} placeholder="Tutar" className="w-20 bg-white border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-bold text-center outline-none" />
-                      <select value={tourCurrency} onChange={e=>setTourCurrency(e.target.value)} className="bg-white border border-slate-200 rounded-xl p-2.5 text-xs text-slate-700 font-bold outline-none">
-                        <option value="TL">TL</option><option value="USD">USD</option><option value="EUR">EUR</option>
-                      </select>
-                      <button onClick={handleAddTourToRez} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-[10px] uppercase shadow-md transition-all">TURA YAZ</button>
-                    </div>
-                  </div>
+        if (logs.length === 0) {
+          container.innerHTML = '<p class="text-xs text-slate-500 text-center py-8">Henüz kayıtlı işlem bulunmuyor.</p>';
+          return;
+        }
 
-                  <div className="bg-orange-50/50 p-4 rounded-2xl border border-orange-100 shadow-sm">
-                    <h3 className="text-xs font-black text-orange-700 border-b border-orange-100 pb-2 mb-3 uppercase tracking-wider">Tesis İçi Ekstra (Teras, Ütü vs.)</h3>
-                    <div className="space-y-2 mb-3">
-                      <select value={extraType} onChange={e=>setExtraType(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs text-slate-700 font-bold outline-none">
-                        {extraOptions.map(a => <option key={a} value={a}>{a}</option>)}
-                      </select>
-                      <div className="flex gap-2">
-                        <input type="text" value={extraReceiptNo} onChange={e=>setExtraReceiptNo(e.target.value)} placeholder="Fiş No" className="w-1/2 bg-white border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-bold outline-none" />
-                        <input type="text" value={extraNote} onChange={e=>setExtraNote(e.target.value)} placeholder="Detay (2 Bira vs.)" className="w-1/2 bg-white border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 outline-none" />
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <input type="number" value={extraAmount} onChange={e=>setExtraAmount(e.target.value)} placeholder="Tutar" className="w-20 bg-white border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-bold text-center outline-none" />
-                      <select value={extraCurrency} onChange={e=>setExtraCurrency(e.target.value)} className="bg-white border border-slate-200 rounded-xl p-2.5 text-xs text-slate-700 font-bold outline-none">
-                        <option value="TL">TL</option><option value="USD">USD</option><option value="EUR">EUR</option>
-                      </select>
-                      <button onClick={handleAddExtraToRez} className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-2.5 rounded-xl text-[10px] uppercase shadow-md transition-all">EKSTRA YAZ</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
+        logs.forEach(function (item) {
+          const row = document.createElement('div');
+          row.className = 'p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs flex items-start justify-between gap-2';
+          row.innerHTML =
+            '<div>' +
+              '<span class="inline-block px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 font-bold text-[10px] mr-1.5">Oda ' + item.room + '</span>' +
+              '<span class="text-slate-200">' + item.msg + '</span>' +
+            '</div>' +
+            '<span class="text-[10px] text-slate-500 shrink-0">' + item.time + '</span>';
+          container.appendChild(row);
+        });
+      }
 
-              <div className="w-full md:w-5/12 bg-slate-50 border border-slate-100 rounded-3xl p-6 flex flex-col shadow-inner">
-                <h3 className="text-sm font-black text-slate-800 border-b border-slate-200 pb-2 uppercase tracking-wider mb-4">Hesap & Ödemeler</h3>
-                
-                {(() => {
-                  const { totalDebt, totalPaid, remaining } = getCalc(formData);
-                  const cur = formData.currency || 'EUR';
-                  return (
-                    <div className="bg-white rounded-2xl p-5 border border-slate-200 mb-5 shadow-sm space-y-3">
-                      <div className="flex justify-between text-sm text-slate-500 font-medium"><span>Toplam (Oda+Ekstra):</span><span className="font-bold text-slate-800">{totalDebt.toLocaleString()} {cur}</span></div>
-                      <div className="flex justify-between text-sm text-slate-500 font-medium"><span>Alınan Ödemeler:</span><span className="font-bold text-emerald-600">{totalPaid.toLocaleString()} {cur}</span></div>
-                      <div className="border-t border-slate-100 pt-3 flex justify-between items-center">
-                        <span className="text-sm font-black text-slate-800 uppercase">Kalan Bakiye:</span>
-                        <span className={`text-xl font-black ${remaining > 0 ? 'text-rose-600' : 'text-emerald-500'}`}>{remaining > 0 ? `${remaining.toLocaleString()} ${cur}` : `0 ${cur}`}</span>
-                      </div>
-                    </div>
-                  );
-                })()}
+      // Open Room Detail Modal
+      function openRoomModal(roomId) {
+        const room = rooms.find(function (r) { return r.id === Number(roomId); });
+        if (!room) return;
+        activeModalRoomId = room.id;
 
-                <div className="flex-1 overflow-y-auto space-y-2 mb-5 pr-2 max-h-40 custom-scrollbar">
-                  <h4 className="text-[10px] text-slate-400 font-bold uppercase mb-2">Odaya Yazılanlar</h4>
-                  {(Array.isArray(formData.debts) ? formData.debts : []).map(d => (
-                    <div key={d.id} className={`flex justify-between items-center bg-white p-3 rounded-xl text-xs border shadow-sm ${d.type === 'extra' ? 'border-orange-100 border-l-4 border-l-orange-400' : 'border-indigo-100 border-l-4 border-l-indigo-400'}`}>
-                      <span className="text-slate-700 font-semibold">{d.title}</span>
-                      <div className="flex items-center gap-3">
-                        <span className="text-slate-800 font-black">{d.amount} {d.currency}</span>
-                        <button onClick={()=>handleDeleteDebt(d.id)} className="text-rose-400 hover:text-rose-600 font-black px-1">✕</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+        document.getElementById('modalRoomTitle').textContent = 'Oda ' + room.id + ' — Vana & Kollektör Yönetimi';
+        document.getElementById('modalRoomSubtitle').textContent = 'Son güncelleme: ' + (room.updatedAt || 'Bugün');
+        document.getElementById('modalRoomNote').value = room.note || '';
 
-                <div className="border-t border-slate-200 pt-4 mt-auto">
-                  <h4 className="text-xs font-black text-emerald-600 uppercase mb-3">Doğrudan Ana Kasaya Tahsilat</h4>
-                  <div className="space-y-3">
-                    <select value={payCategory} onChange={e=>setPayCategory(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs text-slate-700 font-bold outline-none">
-                      {activities.map(a => <option key={a} value={a}>{a} Tahsilatı</option>)}
-                      {extraOptions.map(a => <option key={a} value={a}>{a} Tahsilatı</option>)}
-                    </select>
-                      
-                    <div className="flex gap-2">
-                      <input type="number" value={payAmount} onChange={e=>setPayAmount(e.target.value)} placeholder="Tutar" className="w-1/2 bg-white border border-slate-200 rounded-xl p-3 text-sm text-slate-800 font-bold outline-none" />
-                      <select value={payCurrency} onChange={e=>setPayCurrency(e.target.value)} className="w-1/4 bg-white border border-slate-200 rounded-xl p-3 text-xs text-slate-700 font-bold outline-none">
-                        <option value="TL">TL</option><option value="USD">USD</option><option value="EUR">EUR</option>
-                      </select>
-                      <select value={payMethod} onChange={e=>setPayMethod(e.target.value)} className="w-1/4 bg-white border border-slate-200 rounded-xl p-3 text-xs text-slate-700 font-medium outline-none">
-                        <option value="cash">Nakit</option><option value="cc">Kredi Kartı</option>
-                      </select>
-                    </div>
-                    <input type="text" value={payNote} onChange={e=>setPayNote(e.target.value)} placeholder="Açıklama (Örn: Peşin vs.)" className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm text-slate-700 outline-none" />
-                    <button onClick={handleReceivePayment} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3.5 rounded-xl shadow-md transition-colors text-xs uppercase tracking-widest">ÖDEMEYİ AL & KASAYA YAZ</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <div className="bg-slate-50 p-6 border-t border-slate-200 flex justify-between items-center shrink-0">
-              {selectedRez ? <button onClick={handleDeleteRez} className="text-rose-600 hover:bg-rose-100 text-xs font-bold px-5 py-3 rounded-xl uppercase transition-colors">Kaydı Sil</button> : <div></div>}
-              <div className="flex gap-3">
-                <button onClick={() => setIsModalOpen(false)} className="px-6 py-3 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-200 transition-colors">İPTAL</button>
-                <button onClick={handleSaveRez} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-10 py-3 rounded-xl shadow-lg shadow-indigo-200 uppercase text-xs tracking-widest transition-all">KAYDET</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+        renderModalDynamicContent(room);
 
-      {/* TOOLTIP */}
-      {tooltip.visible && tooltip.rez && (
-        <div className="fixed z-[99999] pointer-events-none bg-white/95 backdrop-blur-md border border-slate-200 rounded-2xl p-4 shadow-2xl w-64" style={{ left: tooltip.x + 15, top: tooltip.y + 15 }}>
-          <div className="text-slate-800 font-black text-sm border-b border-slate-100 pb-2 mb-2 flex justify-between items-center">
-            <span>{tooltip.rez.guestName}</span>
-            <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-500">Oda {tooltip.rez.roomNo}</span>
-          </div>
-          <div className="text-[11px] space-y-1.5 text-slate-600 font-medium">
-            <p className="flex justify-between"><span>Giriş:</span> <strong className="text-slate-800">{tooltip.rez.checkIn}</strong></p>
-            <p className="flex justify-between"><span>Çıkış:</span> <strong className="text-slate-800">{tooltip.rez.checkOut}</strong></p>
-            
-            {tooltip.rez.note && (
-              <div className="bg-indigo-50 p-2 rounded-lg mt-2 text-indigo-700 italic border border-indigo-100">
-                <strong>Not:</strong> {tooltip.rez.note}
-              </div>
-            )}
-            
-            <div className="mt-2 pt-2 border-t border-slate-100 space-y-1">
-              <div className="flex justify-between"><span>Toplam:</span> <span className="font-bold">{getCalc(tooltip.rez).totalDebt} {getCalc(tooltip.rez).currency}</span></div>
-              <div className="flex justify-between"><span>Ödenen:</span> <span className="font-bold text-emerald-500">{getCalc(tooltip.rez).totalPaid} {getCalc(tooltip.rez).currency}</span></div>
-              <div className="flex justify-between mt-1 pt-1 border-t border-slate-50">
-                <span className="font-black">Kalan Bakiye:</span>
-                <span className={`font-black ${getCalc(tooltip.rez).remaining > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
-                  {getCalc(tooltip.rez).remaining} {getCalc(tooltip.rez).currency}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+        const modal = document.getElementById('roomDetailModal');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+      }
+
+      function renderModalDynamicContent(room) {
+        const occBtn = document.getElementById('modalToggleOccupancy');
+        if (room.occupied) {
+          occBtn.className = 'px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+          occBtn.textContent = 'Müşteri Var (DOLU)';
+        } else {
+          occBtn.className = 'px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-800 text-slate-300 border border-slate-700';
+          occBtn.textContent = 'Oda Boş (BOŞ)';
+        }
+
+        // Main valves in modal
+        const mvContainer = document.getElementById('modalMainValvesContainer');
+        mvContainer.innerHTML = '';
+        const mvNames = ['Ana Vana 1 (Sıcak Giriş)', 'Ana Vana 2 (Dönüş Hattı)'];
+        room.mainValves.forEach(function (isOpen, idx) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = isOpen
+            ? 'p-3 rounded-xl border border-emerald-500/40 bg-emerald-500/15 text-left flex items-center justify-between transition'
+            : 'p-3 rounded-xl border border-rose-500/40 bg-rose-950/40 text-left flex items-center justify-between transition';
+          btn.innerHTML =
+            '<div>' +
+              '<div class="text-xs font-bold ' + (isOpen ? 'text-emerald-300' : 'text-rose-300') + '">' + mvNames[idx] + '</div>' +
+              '<div class="text-[11px] text-slate-400 mt-0.5">' + (isOpen ? 'Su geçişi aktif' : 'Vana kapalı') + '</div>' +
+            '</div>' +
+            '<span class="px-2 py-0.5 rounded text-[10px] font-bold ' + (isOpen ? 'bg-emerald-500 text-slate-950' : 'bg-rose-500 text-white') + '">' +
+              (isOpen ? 'AÇIK' : 'KAPALI') +
+            '</span>';
+          btn.addEventListener('click', function () {
+            room.mainValves[idx] = !room.mainValves[idx];
+            room.updatedAt = getNowTimeStr();
+            addLog(room.id, 'Ana Vana ' + (idx + 1) + ' ' + (room.mainValves[idx] ? 'AÇILDI' : 'KAPATILDI'));
+            renderModalDynamicContent(room);
+            renderRooms();
+          });
+          mvContainer.appendChild(btn);
+        });
+
+        // Collectors in modal
+        const colContainer = document.getElementById('modalCollectorsContainer');
+        colContainer.innerHTML = '';
+        const openCols = room.collectors.filter(Boolean).length;
+        document.getElementById('modalCollectorSummary').textContent = openCols + ' / 5 Kollektör Açık';
+
+        room.collectors.forEach(function (cOpen, idx) {
+          const row = document.createElement('div');
+          row.className = 'p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between';
+          row.innerHTML =
+            '<div class="flex items-center gap-2.5">' +
+              '<span class="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold ' +
+                (cOpen ? 'bg-orange-500 text-slate-950' : 'bg-slate-800 text-slate-500') + '">K' + (idx + 1) + '</span>' +
+              '<div>' +
+                '<div class="text-xs font-medium text-slate-200">' + COLLECTOR_LABELS[idx] + '</div>' +
+                '<div class="text-[10px] text-slate-500">' + (cOpen ? 'Mandal Açık (%20 Kapasite)' : 'Mandal Kapalı') + '</div>' +
+              '</div>' +
+            '</div>' +
+            '<button type="button" class="px-3 py-1 rounded-lg text-xs font-semibold transition ' +
+              (cOpen ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30 hover:bg-orange-500/30' : 'bg-slate-800 text-slate-400 hover:bg-slate-700') + '">' +
+              (cOpen ? 'Açık (Kapat)' : 'Kapalı (Aç)') +
+            '</button>';
+          row.querySelector('button').addEventListener('click', function () {
+            room.collectors[idx] = !room.collectors[idx];
+            room.updatedAt = getNowTimeStr();
+            addLog(room.id, COLLECTOR_LABELS[idx] + ' ' + (room.collectors[idx] ? 'AÇILDI' : 'KAPATILDI'));
+            renderModalDynamicContent(room);
+            renderRooms();
+          });
+          colContainer.appendChild(row);
+        });
+      }
+
+      function closeRoomModal() {
+        const modal = document.getElementById('roomDetailModal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        activeModalRoomId = null;
+      }
+
+      // Event Delegation for Room Cards
+      document.getElementById('roomsGrid').addEventListener('click', function (e) {
+        const btn = e.target.closest('button[data-action]');
+        if (!btn) return;
+        const action = btn.getAttribute('data-action');
+        const roomId = Number(btn.getAttribute('data-room'));
+        const room = rooms.find(function (r) { return r.id === roomId; });
+        if (!room) return;
+
+        if (action === 'toggle-main') {
+          const idx = Number(btn.getAttribute('data-index'));
+          room.mainValves[idx] = !room.mainValves[idx];
+          room.updatedAt = getNowTimeStr();
+          addLog(room.id, 'Ana Vana ' + (idx + 1) + ' ' + (room.mainValves[idx] ? 'AÇILDI' : 'KAPATILDI'));
+          showToast('Oda ' + room.id + ': Ana Vana ' + (idx + 1) + ' ' + (room.mainValves[idx] ? 'açıldı' : 'kapatıldı'));
+          renderRooms();
+        } else if (action === 'toggle-collector') {
+          const idx = Number(btn.getAttribute('data-index'));
+          room.collectors[idx] = !room.collectors[idx];
+          room.updatedAt = getNowTimeStr();
+          const openCount = room.collectors.filter(Boolean).length;
+          addLog(room.id, 'Kollektör K' + (idx + 1) + ' ' + (room.collectors[idx] ? 'açıldı' : 'kapatıldı') + ' (' + openCount + '/5 aktif)');
+          showToast('Oda ' + room.id + ': Kollektör K' + (idx + 1) + ' ' + (room.collectors[idx] ? 'açıldı' : 'kapatıldı'));
+          renderRooms();
+        } else if (action === 'toggle-occupancy') {
+          room.occupied = !room.occupied;
+          room.updatedAt = getNowTimeStr();
+          addLog(room.id, 'Doluluk durumu ' + (room.occupied ? 'DOLU' : 'BOŞ') + ' olarak işaretlendi');
+          renderRooms();
+        } else if (action === 'quick-full') {
+          room.mainValves = [true, true];
+          room.collectors = [true, true, true, true, true];
+          room.updatedAt = getNowTimeStr();
+          addLog(room.id, 'Tam ısıtmaya alındı (2 Ana Vana + 5/5 Kollektör Açık)');
+          showToast('Oda ' + room.id + ' tam ısıtmaya alındı (%100)');
+          renderRooms();
+        } else if (action === 'quick-eco') {
+          room.mainValves = [true, true];
+          room.collectors = [true, true, true, false, false];
+          room.updatedAt = getNowTimeStr();
+          addLog(room.id, 'Isı düşürüldü: Ana vanalar açık, 2 kollektör kapatıldı (3/5 aktif)');
+          showToast('Oda ' + room.id + ': 2 kollektör kapatıldı (3/5 aktif)');
+          renderRooms();
+        } else if (action === 'quick-close-main') {
+          room.mainValves = [false, false];
+          room.updatedAt = getNowTimeStr();
+          addLog(room.id, 'Her iki Ana Vana kapatıldı (Isı kesildi)');
+          showToast('Oda ' + room.id + ': Ana vanalar kapatıldı');
+          renderRooms();
+        } else if (action === 'open-detail') {
+          openRoomModal(room.id);
+        }
+      });
+
+      // Filter buttons
+      document.getElementById('filterButtonsContainer').addEventListener('click', function (e) {
+        const btn = e.target.closest('button[data-filter]');
+        if (!btn) return;
+        activeFilter = btn.getAttribute('data-filter');
+        document.querySelectorAll('#filterButtonsContainer .filter-btn').forEach(function (b) {
+          if (b.getAttribute('data-filter') === activeFilter) {
+            b.className = 'filter-btn px-3 py-1.5 rounded-lg text-xs font-semibold transition bg-amber-500 text-slate-950';
+          } else {
+            b.className = 'filter-btn px-3 py-1.5 rounded-lg text-xs font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700';
+          }
+        });
+        renderRooms();
+      });
+
+      document.getElementById('searchInput').addEventListener('input', function (e) {
+        searchQuery = e.target.value;
+        renderRooms();
+      });
+
+      document.getElementById('occupancyFilter').addEventListener('change', function (e) {
+        occupancyFilter = e.target.value;
+        renderRooms();
+      });
+
+      document.getElementById('btnClearFilters').addEventListener('click', function () {
+        activeFilter = 'all';
+        occupancyFilter = 'all';
+        searchQuery = '';
+        document.getElementById('searchInput').value = '';
+        document.getElementById('occupancyFilter').value = 'all';
+        document.querySelectorAll('#filterButtonsContainer .filter-btn').forEach(function (b) {
+          if (b.getAttribute('data-filter') === 'all') {
+            b.className = 'filter-btn px-3 py-1.5 rounded-lg text-xs font-semibold transition bg-amber-500 text-slate-950';
+          } else {
+            b.className = 'filter-btn px-3 py-1.5 rounded-lg text-xs font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700';
+          }
+        });
+        renderRooms();
+      });
+
+      // Modal events
+      document.getElementById('btnCloseDetailModal').addEventListener('click', closeRoomModal);
+      document.getElementById('btnSaveRoomModal').addEventListener('click', function () {
+        if (activeModalRoomId !== null) {
+          const room = rooms.find(function (r) { return r.id === activeModalRoomId; });
+          if (room) {
+            const newNote = document.getElementById('modalRoomNote').value.trim();
+            if (room.note !== newNote) {
+              room.note = newNote;
+              room.updatedAt = getNowTimeStr();
+              addLog(room.id, 'Oda notu güncellendi');
+            }
+            saveState();
+            renderRooms();
+            showToast('Oda ' + room.id + ' kaydedildi');
+          }
+        }
+        closeRoomModal();
+      });
+
+      document.getElementById('modalToggleOccupancy').addEventListener('click', function () {
+        if (activeModalRoomId === null) return;
+        const room = rooms.find(function (r) { return r.id === activeModalRoomId; });
+        if (!room) return;
+        room.occupied = !room.occupied;
+        room.updatedAt = getNowTimeStr();
+        addLog(room.id, 'Doluluk durumu ' + (room.occupied ? 'DOLU' : 'BOŞ') + ' yapıldı');
+        renderModalDynamicContent(room);
+        renderRooms();
+      });
+
+      document.getElementById('modalPresetFull').addEventListener('click', function () {
+        if (activeModalRoomId === null) return;
+        const room = rooms.find(function (r) { return r.id === activeModalRoomId; });
+        if (!room) return;
+        room.mainValves = [true, true];
+        room.collectors = [true, true, true, true, true];
+        room.updatedAt = getNowTimeStr();
+        addLog(room.id, 'Tam Açık moda alındı (2 Ana Vana + 5 Kollektör)');
+        renderModalDynamicContent(room);
+        renderRooms();
+      });
+
+      document.getElementById('modalPresetEco').addEventListener('click', function () {
+        if (activeModalRoomId === null) return;
+        const room = rooms.find(function (r) { return r.id === activeModalRoomId; });
+        if (!room) return;
+        room.mainValves = [true, true];
+        room.collectors = [true, true, true, false, false];
+        room.updatedAt = getNowTimeStr();
+        addLog(room.id, 'Kısık moda alındı (Ana vanalar açık, 3/5 kollektör açık)');
+        renderModalDynamicContent(room);
+        renderRooms();
+      });
+
+      document.getElementById('modalPresetOff').addEventListener('click', function () {
+        if (activeModalRoomId === null) return;
+        const room = rooms.find(function (r) { return r.id === activeModalRoomId; });
+        if (!room) return;
+        room.mainValves = [false, false];
+        room.updatedAt = getNowTimeStr();
+        addLog(room.id, 'Ana Vanalar kapatıldı');
+        renderModalDynamicContent(room);
+        renderRooms();
+      });
+
+      // Bulk Modal Events
+      const bulkModal = document.getElementById('bulkModal');
+      document.getElementById('btnOpenBulkModal').addEventListener('click', function () {
+        bulkModal.classList.remove('hidden');
+        bulkModal.classList.add('flex');
+      });
+      document.getElementById('btnCloseBulkModal').addEventListener('click', function () {
+        bulkModal.classList.add('hidden');
+        bulkModal.classList.remove('flex');
+      });
+
+      document.getElementById('bulkAllFull').addEventListener('click', function () {
+        rooms.forEach(function (r) {
+          r.mainValves = [true, true];
+          r.collectors = [true, true, true, true, true];
+          r.updatedAt = getNowTimeStr();
+        });
+        addLog('101-120', 'Toplu İşlem: Tüm odalar tam ısıtmaya (2V + 5K) alındı');
+        renderRooms();
+        bulkModal.classList.add('hidden');
+        bulkModal.classList.remove('flex');
+        showToast('Tüm odalar (101-120) tam ısıtmaya alındı');
+      });
+
+      document.getElementById('bulkEmptyEco').addEventListener('click', function () {
+        let count = 0;
+        rooms.forEach(function (r) {
+          if (!r.occupied) {
+            r.mainValves = [true, true];
+            r.collectors = [true, true, true, false, false];
+            r.updatedAt = getNowTimeStr();
+            count++;
+          }
+        });
+        addLog('Boş Odalar', 'Toplu İşlem: ' + count + ' boş odada 2 kollektör kapatıldı (3/5 aktif)');
+        renderRooms();
+        bulkModal.classList.add('hidden');
+        bulkModal.classList.remove('flex');
+        showToast(count + ' boş odada 2 kollektör kapatıldı');
+      });
+
+      document.getElementById('bulkEmptyMainOff').addEventListener('click', function () {
+        let count = 0;
+        rooms.forEach(function (r) {
+          if (!r.occupied) {
+            r.mainValves = [false, false];
+            r.updatedAt = getNowTimeStr();
+            count++;
+          }
+        });
+        addLog('Boş Odalar', 'Toplu İşlem: ' + count + ' boş odanın ana vanaları kapatıldı');
+        renderRooms();
+        bulkModal.classList.add('hidden');
+        bulkModal.classList.remove('flex');
+        showToast(count + ' boş odanın ana vanası kapatıldı');
+      });
+
+      document.getElementById('bulkAllMainOff').addEventListener('click', function () {
+        rooms.forEach(function (r) {
+          r.mainValves = [false, false];
+          r.updatedAt = getNowTimeStr();
+        });
+        addLog('101-120', 'Toplu İşlem: Tüm otelin ana vanaları kapatıldı');
+        renderRooms();
+        bulkModal.classList.add('hidden');
+        bulkModal.classList.remove('flex');
+        showToast('Tüm odaların ana vanaları kapatıldı');
+      });
+
+      // Log Drawer Events
+      const logDrawer = document.getElementById('logDrawer');
+      document.getElementById('btnOpenLogDrawer').addEventListener('click', function () {
+        logDrawer.classList.remove('hidden');
+        logDrawer.classList.add('flex');
+      });
+      document.getElementById('btnCloseLogDrawer').addEventListener('click', function () {
+        logDrawer.classList.add('hidden');
+        logDrawer.classList.remove('flex');
+      });
+      document.getElementById('btnClearLogs').addEventListener('click', function () {
+        logs = [];
+        saveState();
+        renderLogs();
+        showToast('Hareket kayıtları temizlendi');
+      });
+
+      // Export CSV
+      document.getElementById('btnExportCsv').addEventListener('click', function () {
+        const headers = ['Oda No', 'Doluluk', 'Ana Vana 1', 'Ana Vana 2', 'K1', 'K2', 'K3', 'K4', 'K5', 'Aktif Isitma (%)', 'Not'];
+        const rows = rooms.map(function (r) {
+          const m = getRoomMetrics(r);
+          return [
+            r.id,
+            r.occupied ? 'Dolu' : 'Bos',
+            r.mainValves[0] ? 'Acik' : 'Kapali',
+            r.mainValves[1] ? 'Acik' : 'Kapali',
+            r.collectors[0] ? 'Acik' : 'Kapali',
+            r.collectors[1] ? 'Acik' : 'Kapali',
+            r.collectors[2] ? 'Acik' : 'Kapali',
+            r.collectors[3] ? 'Acik' : 'Kapali',
+            r.collectors[4] ? 'Acik' : 'Kapali',
+            '%' + m.effectivePct,
+            '"' + (r.note || '').replace(/"/g, '""') + '"'
+          ].join(',');
+        });
+        const csvContent = '\uFEFF' + headers.join(',') + '\n' + rows.join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'otel_yerden_isitma_durumu_101_120.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('CSV durum raporu indirildi');
+      });
+
+      // Reset Demo
+      document.getElementById('btnResetDemo').addEventListener('click', function () {
+        rooms = createDefaultRooms();
+        logs = [
+          { time: getNowTimeStr(), room: 'Sistem', msg: 'Varsayılan oda ayarlarına sıfırlandı' }
+        ];
+        saveState();
+        renderRooms();
+        renderLogs();
+        showToast('Panel varsayılan verilere sıfırlandı');
+      });
+
+      // Init
+      loadState();
+      renderRooms();
+      renderLogs();
+    })();
+  </script>
+</body>
+</html>
