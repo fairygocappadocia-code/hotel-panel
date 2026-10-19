@@ -16,14 +16,15 @@ const DEFAULT_FIREBASE_CONFIG = {
   databaseURL: '', // Realtime Database URL verilmedi; Firestore kullanÄ±lacak.
 };
 
+
 interface RoomHistoryItem {
   id: string;
   dateIso: string; // YYYY-MM-DD
   dateLabel: string; // e.g. 19 Ekim 2026
   time: string; // HH:mm
-  device: string; // e.g. Telefon, Resepsiyon PC
-  action: string; // e.g. KollektÃ¶r K4 kapatÄ±ldÄ±
-  summary: string; // e.g. 2/2 Ana Vana â€¢ 3/5 KollektÃ¶r (%60)
+  device: string; // e.g. Telefon, Bilgisayar
+  action: string; // e.g. Kollektör K4 kapatıldı
+  summary: string; // e.g. 2/2 Ana Vana • 3/5 Kollektör (%60)
 }
 
 interface Room {
@@ -49,28 +50,29 @@ interface LogEntry {
 const STORAGE_KEY = 'otel_yerden_isitma_v2';
 const LOG_STORAGE_KEY = 'otel_yerden_isitma_logs_v2';
 const SYNC_CONFIG_KEY = 'otel_yerden_isitma_sync_v2';
+const BROADCAST_CHANNEL_NAME = 'otel_yerden_isitma_live_channel';
 
 const COLLECTOR_LABELS: [string, string, string, string, string] = [
-  'K1 (Yatak OdasÄ±)',
-  'K2 (Cam Ã–nÃ¼)',
-  'K3 (Oturma AlanÄ±)',
-  'K4 (Koridor/GiriÅŸ)',
+  'K1 (Yatak Odası)',
+  'K2 (Cam Önü)',
+  'K3 (Oturma Alanı)',
+  'K4 (Koridor/Giriş)',
   'K5 (Banyo)',
 ];
 
 const MONTHS_TR = [
   'Ocak',
-  'Åubat',
+  'Şubat',
   'Mart',
   'Nisan',
-  'MayÄ±s',
+  'Mayıs',
   'Haziran',
   'Temmuz',
-  'AÄŸustos',
-  'EylÃ¼l',
+  'Ağustos',
+  'Eylül',
   'Ekim',
-  'KasÄ±m',
-  'AralÄ±k',
+  'Kasım',
+  'Aralık',
 ];
 
 function getNowDateAndTime() {
@@ -90,14 +92,16 @@ function getNowTimeStr(): string {
   return getNowDateAndTime().time;
 }
 
-function formatValvesSummary(mainValves: [boolean, boolean], collectors: [boolean, boolean, boolean, boolean, boolean]) {
+function formatValvesSummary(
+  mainValves: [boolean, boolean],
+  collectors: [boolean, boolean, boolean, boolean, boolean]
+) {
   const openMain = mainValves.filter(Boolean).length;
   const openCol = collectors.filter(Boolean).length;
   const pct = openMain === 2 ? openCol * 20 : openMain === 1 ? Math.round(openCol * 10) : 0;
-  return `${openMain}/2 Ana Vana â€¢ ${openCol}/5 KollektÃ¶r (%${pct} IsÄ±)`;
+  return `${openMain}/2 Ana Vana • ${openCol}/5 Kollektör (%${pct} Isı)`;
 }
 
-// Parse pasted firebaseConfig snippet, projectId, or databaseURL automatically
 function parseFirebaseInput(raw: string): { mode: 'rtdb' | 'firestore' | 'none'; endpoint: string; label: string } {
   const text = (raw || '').trim();
   if (!text) {
@@ -121,8 +125,9 @@ function parseFirebaseInput(raw: string): { mode: 'rtdb' | 'firestore' | 'none';
     return { mode: 'none', endpoint: '', label: '' };
   }
 
-  // Check if user pasted a full firebaseConfig object
-  const dbUrlMatch = text.match(/https:\/\/[a-zA-Z0-9-]+(?:-[a-zA-Z0-9-]+)*\.(?:firebaseio\.com|firebasedatabase\.app)[^\s"']*/);
+  const dbUrlMatch = text.match(
+    /https:\/\/[a-zA-Z0-9-]+(?:-[a-zA-Z0-9-]+)*\.(?:firebaseio\.com|firebasedatabase\.app)[^\s"']*/
+  );
   if (dbUrlMatch) {
     const clean = dbUrlMatch[0].replace(/\/+$/, '');
     return {
@@ -144,7 +149,6 @@ function parseFirebaseInput(raw: string): { mode: 'rtdb' | 'firestore' | 'none';
     };
   }
 
-  // If it's a direct http(s) URL
   if (text.startsWith('http://') || text.startsWith('https://')) {
     const clean = text.replace(/\/+$/, '');
     if (clean.includes('firebaseio.com') || clean.includes('firebasedatabase.app')) {
@@ -160,7 +164,6 @@ function parseFirebaseInput(raw: string): { mode: 'rtdb' | 'firestore' | 'none';
     return { mode: 'rtdb', endpoint: clean, label: 'Bulut Servisi' };
   }
 
-  // Otherwise treat plain string as Firebase projectId (e.g. "otel-takip-12345")
   const cleanPid = text.replace(/[^a-zA-Z0-9-_]/g, '');
   if (cleanPid.length >= 4) {
     return {
@@ -188,7 +191,7 @@ function createDefaultRooms(): Room[] {
       mainValves = [true, true];
       collectors = [true, true, true, false, false];
       occupied = true;
-      note = 'MÃ¼ÅŸteri oda Ã§ok sÄ±cak dediÄŸi iÃ§in 2 kollektÃ¶r kapatÄ±ldÄ±, ana vanalar aÃ§Ä±k.';
+      note = 'Müşteri oda çok sıcak dediği için 2 kollektör kapatıldı, ana vanalar açık.';
       history.push(
         {
           id: '101-1',
@@ -196,8 +199,8 @@ function createDefaultRooms(): Room[] {
           dateLabel,
           time: '11:35',
           device: 'Telefon',
-          action: 'KollektÃ¶r K4 ve K5 kapatÄ±ldÄ± (IsÄ± dÃ¼ÅŸÃ¼rÃ¼ldÃ¼)',
-          summary: '2/2 Ana Vana â€¢ 3/5 KollektÃ¶r (%60 IsÄ±)',
+          action: 'Kollektör K4 ve K5 kapatıldı (Isı düşürüldü)',
+          summary: '2/2 Ana Vana • 3/5 Kollektör (%60 Isı)',
         },
         {
           id: '101-0',
@@ -205,79 +208,79 @@ function createDefaultRooms(): Room[] {
           dateLabel: '18 Ekim 2026',
           time: '19:10',
           device: 'Resepsiyon PC',
-          action: 'MÃ¼ÅŸteri giriÅŸi yapÄ±ldÄ±, tÃ¼m vanalar ve 5 kollektÃ¶r aÃ§Ä±ldÄ±',
-          summary: '2/2 Ana Vana â€¢ 5/5 KollektÃ¶r (%100 IsÄ±)',
+          action: 'Müşteri girişi yapıldı, tüm vanalar ve 5 kollektör açıldı',
+          summary: '2/2 Ana Vana • 5/5 Kollektör (%100 Isı)',
         }
       );
     } else if (num === 102) {
       mainValves = [false, false];
       collectors = [true, true, true, true, true];
       occupied = false;
-      note = 'Oda boÅŸ olduÄŸu iÃ§in ana vanalar kapatÄ±ldÄ± (kollektÃ¶r mandallarÄ± aÃ§Ä±k konumda).';
+      note = 'Oda boş olduğu için ana vanalar kapatıldı (kollektör mandalları açık konumda).';
       history.push({
         id: '102-1',
         dateIso,
         dateLabel,
         time: '11:20',
         device: 'Telefon',
-        action: 'Ana Vana 1 ve Ana Vana 2 kapatÄ±ldÄ± (Oda boÅŸ)',
-        summary: '0/2 Ana Vana â€¢ 5/5 KollektÃ¶r (%0 IsÄ±)',
+        action: 'Ana Vana 1 ve Ana Vana 2 kapatıldı (Oda boş)',
+        summary: '0/2 Ana Vana • 5/5 Kollektör (%0 Isı)',
       });
     } else if (num === 105 || num === 108 || num === 114) {
       mainValves = [true, true];
       collectors = [true, true, false, true, false];
       occupied = true;
-      note = 'IlÄ±k mod: Cam Ã¶nÃ¼ ve koridor aÃ§Ä±k, 2 hat kÄ±sÄ±ldÄ±.';
+      note = 'Ilık mod: Cam önü ve koridor açık, 2 hat kısıldı.';
       history.push({
         id: `${num}-1`,
         dateIso,
         dateLabel,
         time: '10:15',
         device: 'Teknik Servis',
-        action: 'K3 ve K5 kollektÃ¶rleri kapatÄ±ldÄ± (IlÄ±k mod)',
-        summary: '2/2 Ana Vana â€¢ 3/5 KollektÃ¶r (%60 IsÄ±)',
+        action: 'K3 ve K5 kollektörleri kapatıldı (Ilık mod)',
+        summary: '2/2 Ana Vana • 3/5 Kollektör (%60 Isı)',
       });
     } else if (num === 110 || num === 115 || num === 119) {
       mainValves = [false, false];
       collectors = [false, false, false, false, false];
       occupied = false;
-      note = 'Oda boÅŸ - Ana vanalar ve kollektÃ¶rler kapalÄ±.';
+      note = 'Oda boş - Ana vanalar ve kollektörler kapalı.';
       history.push({
         id: `${num}-1`,
         dateIso: '2026-10-18',
         dateLabel: '18 Ekim 2026',
         time: '14:00',
         device: 'Resepsiyon PC',
-        action: 'Oda Ã§Ä±kÄ±ÅŸ yaptÄ±, ana vanalar ve kollektÃ¶rler kapatÄ±ldÄ±',
-        summary: '0/2 Ana Vana â€¢ 0/5 KollektÃ¶r (%0 IsÄ±)',
+        action: 'Oda çıkış yaptı, ana vanalar ve kollektörler kapatıldı',
+        summary: '0/2 Ana Vana • 0/5 Kollektör (%0 Isı)',
       });
     } else if (num === 112) {
       mainValves = [true, false];
       collectors = [true, true, true, true, false];
       occupied = true;
-      note = '2. Ana vana kapalÄ±! Devirdaim zayÄ±f olabilir, kontrol edilmeli.';
+      note = '2. Ana vana kapalı! Devirdaim zayıf olabilir, kontrol edilmeli.';
       history.push({
         id: '112-1',
         dateIso,
         dateLabel,
         time: '10:50',
         device: 'Telefon',
-        action: 'Ana Vana 2 kapatÄ±ldÄ± (Tek ana vana aÃ§Ä±k uyarÄ±sÄ±)',
-        summary: '1/2 Ana Vana â€¢ 4/5 KollektÃ¶r (%40 IsÄ±)',
+        action: 'Ana Vana 2 kapatıldı (Tek ana vana açık uyarısı)',
+        summary: '1/2 Ana Vana • 4/5 Kollektör (%40 Isı)',
       });
     } else if (num === 117 || num === 120) {
       mainValves = [true, true];
       collectors = [true, true, true, true, false];
       occupied = false;
-      note = 'YarÄ±n giriÅŸ var, Ã¶n Ä±sÄ±tma (4/5 kollektÃ¶r aÃ§Ä±k).';
+      note = 'Yarın giriş var, ön ısıtma (4/5 kollektör açık).';
       history.push({
         id: `${num}-1`,
         dateIso,
         dateLabel,
         time: '09:30',
         device: 'Telefon',
-        action: 'Ã–n Ä±sÄ±tma iÃ§in ana vanalar ve 4 kollektÃ¶r aÃ§Ä±ldÄ±',
-        summary: '2/2 Ana Vana â€¢ 4/5 KollektÃ¶r (%80 IsÄ±)',
+        action: 'Ön ısıtma için ana vanalar ve 4 kollektör açıldı',
+        summary: '2/2 Ana Vana • 4/5 Kollektör (%80 Isı)',
       });
     } else {
       history.push({
@@ -286,8 +289,8 @@ function createDefaultRooms(): Room[] {
         dateLabel: '18 Ekim 2026',
         time: '12:00',
         device: 'Sistem',
-        action: 'Tam Ä±sÄ±tma modunda aktif (2 Ana Vana + 5 KollektÃ¶r AÃ§Ä±k)',
-        summary: '2/2 Ana Vana â€¢ 5/5 KollektÃ¶r (%100 IsÄ±)',
+        action: 'Tam ısıtma modunda aktif (2 Ana Vana + 5 Kollektör Açık)',
+        summary: '2/2 Ana Vana • 5/5 Kollektör (%100 Isı)',
       });
     }
 
@@ -302,6 +305,48 @@ function createDefaultRooms(): Room[] {
     });
   }
   return rooms;
+}
+
+function createDefaultLogs(): LogEntry[] {
+  const { dateIso, dateLabel } = getNowDateAndTime();
+  return [
+    {
+      id: 'init-1',
+      dateIso,
+      dateLabel,
+      time: '11:35',
+      device: 'Telefon',
+      room: 101,
+      msg: 'Kollektör K4 ve K5 kapatıldı (Ana vanalar açık, 3/5 aktif)',
+    },
+    {
+      id: 'init-2',
+      dateIso,
+      dateLabel,
+      time: '11:20',
+      device: 'Telefon',
+      room: 102,
+      msg: 'Ana Vana 1 ve 2 kapatıldı (Isı kesildi)',
+    },
+    {
+      id: 'init-3',
+      dateIso,
+      dateLabel,
+      time: '10:50',
+      device: 'Telefon',
+      room: 112,
+      msg: 'Ana Vana 2 kapatıldı (Tek ana vana açık uyarısı)',
+    },
+    {
+      id: 'init-4',
+      dateIso: '2026-10-18',
+      dateLabel: '18 Ekim 2026',
+      time: '19:10',
+      device: 'Resepsiyon PC',
+      room: 101,
+      msg: 'Müşteri girişi yapıldı, tüm vanalar ve 5 kollektör açıldı',
+    },
+  ];
 }
 
 function getRoomMetrics(room: Room) {
@@ -320,23 +365,23 @@ function getRoomMetrics(room: Room) {
     effectivePct = 0;
   }
 
-  let statusLabel = 'KÄ±smi IsÄ±tma';
+  let statusLabel = 'Kısmi Isıtma';
   let statusColor: 'orange' | 'amber' | 'rose' = 'amber';
 
   if (allMainClosed) {
-    statusLabel = 'Ana Vana KapalÄ± (IsÄ± Yok)';
+    statusLabel = 'Ana Vana Kapalı (Isı Yok)';
     statusColor = 'rose';
   } else if (oneMainClosed) {
-    statusLabel = 'Tek Ana Vana KapalÄ±!';
+    statusLabel = 'Tek Ana Vana Kapalı!';
     statusColor = 'rose';
   } else if (bothMainOpen && openCollectorCount === 5) {
-    statusLabel = 'Tam AÃ§Ä±k (5/5)';
+    statusLabel = 'Tam Açık (5/5)';
     statusColor = 'orange';
   } else if (bothMainOpen && openCollectorCount === 0) {
-    statusLabel = 'Ana Vana AÃ§Ä±k / 5 KollektÃ¶r KapalÄ±';
+    statusLabel = 'Ana Vana Açık / 5 Kollektör Kapalı';
     statusColor = 'rose';
   } else {
-    statusLabel = `KÄ±sÄ±k (${openCollectorCount}/5 KollektÃ¶r)`;
+    statusLabel = `Kısık (${openCollectorCount}/5 Kollektör)`;
     statusColor = 'amber';
   }
 
@@ -360,47 +405,22 @@ function getRoomMetrics(room: Room) {
 
 export default function App() {
   const [rooms, setRooms] = useState<Room[]>(() => createDefaultRooms());
-  const [logs, setLogs] = useState<LogEntry[]>(() => {
-    const { dateIso, dateLabel } = getNowDateAndTime();
-    return [
-      {
-        id: 'init-1',
-        dateIso,
-        dateLabel,
-        time: '11:35',
-        device: 'Telefon',
-        room: 101,
-        msg: 'KollektÃ¶r K4 ve K5 kapatÄ±ldÄ± (Ana vanalar aÃ§Ä±k, 3/5 aktif)',
-      },
-      {
-        id: 'init-2',
-        dateIso,
-        dateLabel,
-        time: '11:20',
-        device: 'Telefon',
-        room: 102,
-        msg: 'Ana Vana 1 ve 2 kapatÄ±ldÄ± (IsÄ± kesildi)',
-      },
-      {
-        id: 'init-3',
-        dateIso,
-        dateLabel,
-        time: '10:50',
-        device: 'Telefon',
-        room: 112,
-        msg: 'Ana Vana 2 kapatÄ±ldÄ± (Tek ana vana aÃ§Ä±k uyarÄ±sÄ±)',
-      },
-      {
-        id: 'init-4',
-        dateIso: '2026-10-18',
-        dateLabel: '18 Ekim 2026',
-        time: '19:10',
-        device: 'Resepsiyon PC',
-        room: 101,
-        msg: 'MÃ¼ÅŸteri giriÅŸi yapÄ±ldÄ±, tÃ¼m vanalar ve 5 kollektÃ¶r aÃ§Ä±ldÄ±',
-      },
-    ];
-  });
+  const [logs, setLogs] = useState<LogEntry[]>(() => createDefaultLogs());
+
+  // Refs to prevent stale closures & avoid overwriting localStorage on mount
+  const roomsRef = useRef<Room[]>(rooms);
+  const logsRef = useRef<LogEntry[]>(logs);
+  const isPushingRef = useRef<boolean>(false);
+  const lastUpdatedTimestampRef = useRef<number>(0);
+  const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
+
+  useEffect(() => {
+    roomsRef.current = rooms;
+  }, [rooms]);
+
+  useEffect(() => {
+    logsRef.current = logs;
+  }, [logs]);
 
   // View & Filter states
   const [mainTab, setMainTab] = useState<'grid' | 'daily_history'>('grid');
@@ -423,14 +443,14 @@ export default function App() {
   const [toastText, setToastText] = useState<string | null>(null);
 
   // Automatic Firebase Sync States
-  const [deviceName, setDeviceName] = useState<string>('Mobil / PC');
+  const [deviceName, setDeviceName] = useState<string>('Bilgisayar');
   const [cloudUrl, setCloudUrl] = useState<string>(
     DEFAULT_FIREBASE_CONFIG.databaseURL || DEFAULT_FIREBASE_CONFIG.projectId || ''
   );
+  const [quickConnectInput, setQuickConnectInput] = useState<string>('');
   const [syncStatus, setSyncStatus] = useState<'local' | 'synced' | 'syncing' | 'error'>('local');
+  const [syncErrorMsg, setSyncErrorMsg] = useState<string>('');
   const [lastSyncedAt, setLastSyncedAt] = useState<string>('--:--');
-  const lastUpdatedTimestampRef = useRef<number>(0);
-  const isInitialMountRef = useRef<boolean>(true);
 
   const showToast = useCallback((msg: string) => {
     setToastText(msg);
@@ -441,15 +461,37 @@ export default function App() {
 
   const resolvedFirebase = useMemo(() => parseFirebaseInput(cloudUrl), [cloudUrl]);
 
-  // Automatic background push to Firebase (supports both Firestore & Realtime DB)
+  // Save to localStorage & broadcast to all other open tabs on the same computer
+  const persistLocalAndBroadcast = useCallback((nextRooms: Room[], nextLogs: LogEntry[], ts: number) => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextRooms));
+      localStorage.setItem(LOG_STORAGE_KEY, JSON.stringify(nextLogs));
+      localStorage.setItem('otel_yerden_isitma_ts_v2', String(ts));
+      if (broadcastChannelRef.current) {
+        broadcastChannelRef.current.postMessage({
+          type: 'STATE_UPDATE',
+          updatedAtTs: ts,
+          rooms: nextRooms,
+          logs: nextLogs,
+        });
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }, []);
+
+  // Automatic background push to Firebase
   const pushToCloud = useCallback(
     async (nextRooms: Room[], nextLogs: LogEntry[], customInput?: string) => {
       const target = customInput !== undefined ? parseFirebaseInput(customInput) : resolvedFirebase;
       if (target.mode === 'none' || !target.endpoint) return;
 
+      isPushingRef.current = true;
       setSyncStatus('syncing');
+      setSyncErrorMsg('');
       const nowTs = Date.now();
       lastUpdatedTimestampRef.current = nowTs;
+
       const payloadObj = {
         updatedAtTs: nowTs,
         updatedBy: deviceName,
@@ -483,17 +525,22 @@ export default function App() {
           setLastSyncedAt(getNowTimeStr());
         } else {
           setSyncStatus('error');
+          setSyncErrorMsg(`HTTP ${res.status}: Firebase izin/adres hatası`);
         }
       } catch {
         setSyncStatus('error');
+        setSyncErrorMsg('Bağlantı kurulamadı (Adresi kontrol edin)');
+      } finally {
+        isPushingRef.current = false;
       }
     },
     [deviceName, resolvedFirebase]
   );
 
-  // Automatic background pull from Firebase (every 2.5s + on window focus)
+  // Automatic background pull from Firebase (does NOT depend on rooms/logs state so it never races!)
   const pullFromCloud = useCallback(
     async (silent = true, customInput?: string) => {
+      if (isPushingRef.current) return;
       const target = customInput !== undefined ? parseFirebaseInput(customInput) : resolvedFirebase;
       if (target.mode === 'none' || !target.endpoint) return;
 
@@ -501,12 +548,12 @@ export default function App() {
       try {
         const res = await fetch(target.endpoint, { cache: 'no-store' });
         if (res.status === 404 && target.mode === 'firestore') {
-          // Document doesn't exist in Firestore yet -> auto-create it immediately!
-          await pushToCloud(rooms, logs, customInput);
+          await pushToCloud(roomsRef.current, logsRef.current, customInput);
           return;
         }
         if (!res.ok) {
           setSyncStatus('error');
+          setSyncErrorMsg(`HTTP ${res.status}: Firebase erişim hatası`);
           return;
         }
         const raw = await res.json();
@@ -517,7 +564,7 @@ export default function App() {
           if (strVal) {
             data = JSON.parse(strVal);
           } else {
-            await pushToCloud(rooms, logs, customInput);
+            await pushToCloud(roomsRef.current, logsRef.current, customInput);
             return;
           }
         }
@@ -527,92 +574,141 @@ export default function App() {
           if (remoteTs > lastUpdatedTimestampRef.current) {
             lastUpdatedTimestampRef.current = remoteTs;
             setRooms(data.rooms);
-            if (Array.isArray(data.logs)) {
-              setLogs(data.logs);
-            }
+            const nextLogs = Array.isArray(data.logs) ? data.logs : logsRef.current;
+            setLogs(nextLogs);
+            persistLocalAndBroadcast(data.rooms, nextLogs, remoteTs);
           }
           setSyncStatus('synced');
+          setSyncErrorMsg('');
           setLastSyncedAt(getNowTimeStr());
-          if (!silent) showToast('CanlÄ± Firebase verisi gÃ¼ncellendi');
+          if (!silent) showToast('Tüm cihazlarla eşitlendi');
         } else if (data === null) {
-          await pushToCloud(rooms, logs, customInput);
+          await pushToCloud(roomsRef.current, logsRef.current, customInput);
         }
       } catch {
         setSyncStatus('error');
+        setSyncErrorMsg('Firebase sunucusuna ulaşılamadı');
       }
     },
-    [logs, pushToCloud, resolvedFirebase, rooms, showToast]
+    [persistLocalAndBroadcast, pushToCloud, resolvedFirebase, showToast]
   );
 
-  // Detect device type automatically (Telefon vs Bilgisayar) and load saved state
+  // Initial load from localStorage + BroadcastChannel setup for instant same-computer tab sync
   useEffect(() => {
     try {
       const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
       setDeviceName(isMobile ? 'Telefon' : 'Bilgisayar');
 
+      const savedTs = Number(localStorage.getItem('otel_yerden_isitma_ts_v2') || '0');
+      if (savedTs > 0) {
+        lastUpdatedTimestampRef.current = savedTs;
+      }
+
       const savedRooms = localStorage.getItem(STORAGE_KEY);
       if (savedRooms) {
         const parsed = JSON.parse(savedRooms);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setRooms(
-            parsed.map((r: Room) => ({
-              ...r,
-              history: Array.isArray(r.history) ? r.history : [],
-            }))
-          );
+          const normalized = parsed.map((r: Room) => ({
+            ...r,
+            history: Array.isArray(r.history) ? r.history : [],
+          }));
+          setRooms(normalized);
+          roomsRef.current = normalized;
         }
       }
+
       const savedLogs = localStorage.getItem(LOG_STORAGE_KEY);
       if (savedLogs) {
         const parsedLogs = JSON.parse(savedLogs);
         if (Array.isArray(parsedLogs)) {
           setLogs(parsedLogs);
+          logsRef.current = parsedLogs;
         }
       }
+
       const savedSync = localStorage.getItem(SYNC_CONFIG_KEY);
       if (savedSync) {
         const cfg = JSON.parse(savedSync);
         if (cfg.deviceName) setDeviceName(cfg.deviceName);
         if (cfg.cloudUrl && !DEFAULT_FIREBASE_CONFIG.databaseURL && !DEFAULT_FIREBASE_CONFIG.projectId) {
           setCloudUrl(cfg.cloudUrl);
+          setQuickConnectInput(cfg.cloudUrl);
         }
       }
     } catch {
       // Ignore storage errors
     }
-    isInitialMountRef.current = false;
+
+    // Setup BroadcastChannel for instant multi-tab sync on the same computer
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        const bc = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+        bc.onmessage = (ev) => {
+          const msg = ev.data;
+          if (msg && msg.type === 'STATE_UPDATE' && Array.isArray(msg.rooms)) {
+            const incomingTs = Number(msg.updatedAtTs || Date.now());
+            lastUpdatedTimestampRef.current = incomingTs;
+            setRooms(msg.rooms);
+            if (Array.isArray(msg.logs)) setLogs(msg.logs);
+          }
+          if (msg && msg.type === 'SYNC_CONFIG_UPDATE' && typeof msg.cloudUrl === 'string') {
+            setCloudUrl(msg.cloudUrl);
+            setQuickConnectInput(msg.cloudUrl);
+          }
+        };
+        broadcastChannelRef.current = bc;
+      } catch {
+        // Ignore BroadcastChannel errors
+      }
+    }
+
+    return () => {
+      if (broadcastChannelRef.current) {
+        broadcastChannelRef.current.close();
+        broadcastChannelRef.current = null;
+      }
+    };
   }, []);
 
-  // Save state to localStorage automatically
-  useEffect(() => {
-    if (isInitialMountRef.current) return;
+  // Save sync config when changed
+  const handleSaveCloudConfig = (newUrl: string, newDevice?: string) => {
+    const cleanUrl = newUrl.trim();
+    const nextDev = newDevice !== undefined ? newDevice : deviceName;
+    setCloudUrl(cleanUrl);
+    setQuickConnectInput(cleanUrl);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(rooms));
-      localStorage.setItem(LOG_STORAGE_KEY, JSON.stringify(logs));
-    } catch {
-      // Ignore storage errors
-    }
-  }, [rooms, logs]);
-
-  // Save sync config
-  useEffect(() => {
-    if (isInitialMountRef.current) return;
-    try {
-      localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify({ deviceName, cloudUrl }));
+      localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify({ deviceName: nextDev, cloudUrl: cleanUrl }));
+      if (broadcastChannelRef.current) {
+        broadcastChannelRef.current.postMessage({ type: 'SYNC_CONFIG_UPDATE', cloudUrl: cleanUrl });
+      }
     } catch {
       // Ignore
     }
-  }, [deviceName, cloudUrl]);
+    if (cleanUrl) {
+      pullFromCloud(false, cleanUrl);
+    } else {
+      setSyncStatus('local');
+    }
+  };
 
-  // Automatic real-time listener (every 2.5 seconds + instant on focus/visibility)
+  // Listen to storage events across tabs + poll Firebase every 2 seconds
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
       try {
         if (e.key === STORAGE_KEY && e.newValue) {
-          setRooms(JSON.parse(e.newValue));
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) setRooms(parsed);
         }
         if (e.key === LOG_STORAGE_KEY && e.newValue) {
-          setLogs(JSON.parse(e.newValue));
+          const parsedLogs = JSON.parse(e.newValue);
+          if (Array.isArray(parsedLogs)) setLogs(parsedLogs);
+        }
+        if (e.key === SYNC_CONFIG_KEY && e.newValue) {
+          const cfg = JSON.parse(e.newValue);
+          if (cfg.cloudUrl !== undefined) {
+            setCloudUrl(cfg.cloudUrl);
+            setQuickConnectInput(cfg.cloudUrl);
+          }
         }
       } catch {
         // Ignore
@@ -621,6 +717,21 @@ export default function App() {
     window.addEventListener('storage', handleStorageChange);
 
     const handleFocus = () => {
+      // Also re-read localStorage on tab focus for instant tab sync
+      try {
+        const savedRooms = localStorage.getItem(STORAGE_KEY);
+        if (savedRooms) {
+          const parsed = JSON.parse(savedRooms);
+          if (Array.isArray(parsed) && parsed.length > 0) setRooms(parsed);
+        }
+        const savedLogs = localStorage.getItem(LOG_STORAGE_KEY);
+        if (savedLogs) {
+          const parsedLogs = JSON.parse(savedLogs);
+          if (Array.isArray(parsedLogs)) setLogs(parsedLogs);
+        }
+      } catch {
+        // Ignore
+      }
       if (resolvedFirebase.mode !== 'none') {
         pullFromCloud(true);
       }
@@ -633,7 +744,7 @@ export default function App() {
       pullFromCloud(true);
       intervalId = setInterval(() => {
         pullFromCloud(true);
-      }, 2500);
+      }, 2000);
     } else {
       setSyncStatus('local');
     }
@@ -646,7 +757,7 @@ export default function App() {
     };
   }, [resolvedFirebase, pullFromCloud]);
 
-  // Helper to update rooms, record per-room daily history AND global log, and AUTOMATICALLY sync to Firebase
+  // Central state commit: updates React state, writes localStorage, broadcasts to other tabs, and pushes to Firebase
   const applyRoomChange = (
     roomId: number,
     updater: (room: Room) => {
@@ -658,9 +769,11 @@ export default function App() {
     }
   ) => {
     const { dateIso, dateLabel, time, fullLabel } = getNowDateAndTime();
+    const nowTs = Date.now();
+    lastUpdatedTimestampRef.current = nowTs;
     let generatedActionText = '';
 
-    const nextRooms = rooms.map((r) => {
+    const nextRooms = roomsRef.current.map((r) => {
       if (r.id !== roomId) return r;
       const changes = updater(r);
       const nextMain = changes.mainValves ?? r.mainValves;
@@ -670,7 +783,7 @@ export default function App() {
       generatedActionText = changes.actionText;
 
       const historyEntry: RoomHistoryItem = {
-        id: `${roomId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        id: `${roomId}-${nowTs}-${Math.random().toString(36).slice(2, 6)}`,
         dateIso,
         dateLabel,
         time,
@@ -691,7 +804,7 @@ export default function App() {
     });
 
     const newLog: LogEntry = {
-      id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      id: `log-${nowTs}-${Math.random().toString(36).slice(2, 6)}`,
       dateIso,
       dateLabel,
       time,
@@ -699,13 +812,16 @@ export default function App() {
       room: roomId,
       msg: generatedActionText,
     };
-    const nextLogs = [newLog, ...logs.slice(0, 299)];
+    const nextLogs = [newLog, ...logsRef.current.slice(0, 299)];
 
+    roomsRef.current = nextRooms;
+    logsRef.current = nextLogs;
     setRooms(nextRooms);
     setLogs(nextLogs);
+
+    persistLocalAndBroadcast(nextRooms, nextLogs, nowTs);
     showToast(`Oda ${roomId}: ${generatedActionText}`);
 
-    // Automatic instant push to Firebase on every valve/collector click
     if (resolvedFirebase.mode !== 'none') {
       pushToCloud(nextRooms, nextLogs);
     }
@@ -719,7 +835,7 @@ export default function App() {
       const isOpen = updatedValves[valveIndex];
       return {
         mainValves: updatedValves,
-        actionText: `Ana Vana ${valveIndex + 1} ${isOpen ? 'AÃ‡ILDI' : 'KAPATILDI'}`,
+        actionText: `Ana Vana ${valveIndex + 1} ${isOpen ? 'AÇILDI' : 'KAPATILDI'}`,
       };
     });
   };
@@ -739,7 +855,7 @@ export default function App() {
       const activeCount = updatedCols.filter(Boolean).length;
       return {
         collectors: updatedCols,
-        actionText: `${COLLECTOR_LABELS[colIndex]} ${isOpen ? 'AÃ‡ILDI' : 'KAPATILDI'} (${activeCount}/5 kollektÃ¶r aktif)`,
+        actionText: `${COLLECTOR_LABELS[colIndex]} ${isOpen ? 'AÇILDI' : 'KAPATILDI'} (${activeCount}/5 kollektör aktif)`,
       };
     });
   };
@@ -750,7 +866,7 @@ export default function App() {
       const nextOcc = !r.occupied;
       return {
         occupied: nextOcc,
-        actionText: `Oda durumu ${nextOcc ? 'DOLU (MÃ¼ÅŸteri Var)' : 'BOÅ'} olarak deÄŸiÅŸtirildi`,
+        actionText: `Oda durumu ${nextOcc ? 'DOLU (Müşteri Var)' : 'BOŞ'} olarak değiştirildi`,
       };
     });
   };
@@ -762,19 +878,19 @@ export default function App() {
         return {
           mainValves: [true, true],
           collectors: [true, true, true, true, true],
-          actionText: 'Tam Ä±sÄ±tmaya alÄ±ndÄ± (2 Ana Vana + 5/5 KollektÃ¶r AÃ§Ä±k)',
+          actionText: 'Tam ısıtmaya alındı (2 Ana Vana + 5/5 Kollektör Açık)',
         };
       }
       if (preset === 'eco') {
         return {
           mainValves: [true, true],
           collectors: [true, true, true, false, false],
-          actionText: 'IsÄ± dÃ¼ÅŸÃ¼rÃ¼ldÃ¼: Ana vanalar aÃ§Ä±k, 2 kollektÃ¶r kapatÄ±ldÄ± (3/5 aktif)',
+          actionText: 'Isı düşürüldü: Ana vanalar açık, 2 kollektör kapatıldı (3/5 aktif)',
         };
       }
       return {
         mainValves: [false, false],
-        actionText: 'Her iki Ana Vana kapatÄ±ldÄ± (Odaya sÄ±cak su giriÅŸi kesildi)',
+        actionText: 'Her iki Ana Vana kapatıldı (Odaya sıcak su girişi kesildi)',
       };
     });
   };
@@ -786,7 +902,7 @@ export default function App() {
     const text = customHistoryEntry.trim();
     applyRoomChange(selectedRoomId, () => ({
       note: text,
-      actionText: `Not / Kontrol KaydÄ±: ${text}`,
+      actionText: `Not / Kontrol Kaydı: ${text}`,
     }));
     setModalNote(text);
     setCustomHistoryEntry('');
@@ -795,15 +911,17 @@ export default function App() {
   // Bulk Actions
   const handleBulkAction = (type: 'all_full' | 'empty_eco' | 'empty_main_off' | 'all_main_off') => {
     const { dateIso, dateLabel, time, fullLabel } = getNowDateAndTime();
+    const nowTs = Date.now();
+    lastUpdatedTimestampRef.current = nowTs;
     let affected = 0;
     let actionLabel = '';
 
-    if (type === 'all_full') actionLabel = 'Toplu Ä°ÅŸlem: Tam Ä±sÄ±tmaya (2V + 5K) alÄ±ndÄ±';
-    if (type === 'empty_eco') actionLabel = 'Toplu Ä°ÅŸlem (BoÅŸ Oda): 2 kollektÃ¶r kapatÄ±ldÄ± (3/5 aktif)';
-    if (type === 'empty_main_off') actionLabel = 'Toplu Ä°ÅŸlem (BoÅŸ Oda): Ana vanalar kapatÄ±ldÄ±';
-    if (type === 'all_main_off') actionLabel = 'Toplu Ä°ÅŸlem: Ana vanalar kapatÄ±ldÄ±';
+    if (type === 'all_full') actionLabel = 'Toplu İşlem: Tam ısıtmaya (2V + 5K) alındı';
+    if (type === 'empty_eco') actionLabel = 'Toplu İşlem (Boş Oda): 2 kollektör kapatıldı (3/5 aktif)';
+    if (type === 'empty_main_off') actionLabel = 'Toplu İşlem (Boş Oda): Ana vanalar kapatıldı';
+    if (type === 'all_main_off') actionLabel = 'Toplu İşlem: Ana vanalar kapatıldı';
 
-    const nextRooms = rooms.map((r) => {
+    const nextRooms = roomsRef.current.map((r) => {
       let shouldUpdate = false;
       let nextMain: [boolean, boolean] = r.mainValves;
       let nextCols: [boolean, boolean, boolean, boolean, boolean] = r.collectors;
@@ -828,7 +946,7 @@ export default function App() {
       affected++;
 
       const entry: RoomHistoryItem = {
-        id: `${r.id}-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+        id: `${r.id}-${nowTs}-${Math.random().toString(36).slice(2, 5)}`,
         dateIso,
         dateLabel,
         time,
@@ -847,20 +965,24 @@ export default function App() {
     });
 
     const bulkLog: LogEntry = {
-      id: `bulk-${Date.now()}`,
+      id: `bulk-${nowTs}`,
       dateIso,
       dateLabel,
       time,
       device: deviceName,
-      room: type.startsWith('empty') ? 'BoÅŸ Odalar' : '101-120',
-      msg: `${actionLabel} (${affected} oda gÃ¼ncellendi)`,
+      room: type.startsWith('empty') ? 'Boş Odalar' : '101-120',
+      msg: `${actionLabel} (${affected} oda güncellendi)`,
     };
 
-    const nextLogs = [bulkLog, ...logs.slice(0, 299)];
+    const nextLogs = [bulkLog, ...logsRef.current.slice(0, 299)];
+    roomsRef.current = nextRooms;
+    logsRef.current = nextLogs;
     setRooms(nextRooms);
     setLogs(nextLogs);
+
+    persistLocalAndBroadcast(nextRooms, nextLogs, nowTs);
     setIsBulkOpen(false);
-    showToast(`${affected} oda iÃ§in toplu iÅŸlem kaydedildi`);
+    showToast(`${affected} oda için toplu işlem kaydedildi`);
 
     if (resolvedFirebase.mode !== 'none') {
       pushToCloud(nextRooms, nextLogs);
@@ -916,7 +1038,7 @@ export default function App() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showToast('CSV durum ve tarihÃ§e raporu indirildi');
+    showToast('CSV durum ve tarihçe raporu indirildi');
   };
 
   // Export / Import JSON Backup
@@ -931,7 +1053,7 @@ export default function App() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showToast('Tam sistem yedeÄŸi indirildi');
+    showToast('Tam sistem yedeği indirildi');
   };
 
   const handleImportJsonBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -942,16 +1064,21 @@ export default function App() {
       try {
         const parsed = JSON.parse(String(reader.result));
         if (parsed && Array.isArray(parsed.rooms)) {
+          const nowTs = Date.now();
+          const nextLogs = Array.isArray(parsed.logs) ? parsed.logs : logsRef.current;
+          roomsRef.current = parsed.rooms;
+          logsRef.current = nextLogs;
           setRooms(parsed.rooms);
-          if (Array.isArray(parsed.logs)) setLogs(parsed.logs);
+          setLogs(nextLogs);
+          persistLocalAndBroadcast(parsed.rooms, nextLogs, nowTs);
           if (resolvedFirebase.mode !== 'none') {
-            pushToCloud(parsed.rooms, parsed.logs || []);
+            pushToCloud(parsed.rooms, nextLogs);
           }
-          showToast('Yedek dosyasÄ± baÅŸarÄ±yla yÃ¼klendi');
+          showToast('Yedek dosyası başarıyla yüklendi');
           setIsSyncModalOpen(false);
         }
       } catch {
-        showToast('Yedek dosyasÄ± okunamadÄ±');
+        showToast('Yedek dosyası okunamadı');
       }
     };
     reader.readAsText(file);
@@ -959,24 +1086,28 @@ export default function App() {
 
   const handleResetDemo = () => {
     const { dateIso, dateLabel, time } = getNowDateAndTime();
+    const nowTs = Date.now();
     const defaultRooms = createDefaultRooms();
     const resetLogs: LogEntry[] = [
       {
-        id: `reset-${Date.now()}`,
+        id: `reset-${nowTs}`,
         dateIso,
         dateLabel,
         time,
         device: deviceName,
         room: 'Sistem',
-        msg: 'VarsayÄ±lan oda ayarlarÄ±na sÄ±fÄ±rlandÄ±',
+        msg: 'Varsayılan oda ayarlarına sıfırlandı',
       },
     ];
+    roomsRef.current = defaultRooms;
+    logsRef.current = resetLogs;
     setRooms(defaultRooms);
     setLogs(resetLogs);
+    persistLocalAndBroadcast(defaultRooms, resetLogs, nowTs);
     if (resolvedFirebase.mode !== 'none') {
       pushToCloud(defaultRooms, resetLogs);
     }
-    showToast('Panel varsayÄ±lan verilere sÄ±fÄ±rlandÄ±');
+    showToast('Panel varsayılan verilere sıfırlandı');
   };
 
   // Summary Stats
@@ -1037,7 +1168,7 @@ export default function App() {
     });
   }, [rooms, activeFilter, occupancyFilter, searchQuery]);
 
-  // Flatten all per-room histories grouped by day for the "GÃ¼n GÃ¼n Oda KayÄ±tlarÄ±" view
+  // Flatten all per-room histories grouped by day for the "Gün Gün Oda Kayıtları" view
   const allRoomHistoryDates = useMemo(() => {
     const dateSet = new Set<string>();
     rooms.forEach((r) => {
@@ -1107,7 +1238,7 @@ export default function App() {
       if (room && room.note !== modalNote.trim()) {
         applyRoomChange(selectedRoomId, () => ({
           note: modalNote.trim(),
-          actionText: `Oda notu gÃ¼ncellendi: "${modalNote.trim() || 'Not silindi'}"`,
+          actionText: `Oda notu güncellendi: "${modalNote.trim() || 'Not silindi'}"`,
         }));
       } else {
         showToast(`Oda ${selectedRoomId} kaydedildi`);
@@ -1140,14 +1271,14 @@ export default function App() {
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="text-base sm:text-xl font-bold tracking-tight text-white">
-                    Otel Yerden IsÄ±tma Takip Paneli
+                    Otel Yerden Isıtma Takip Paneli
                   </h1>
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[12px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                    101 â€“ 120
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                    101 – 120
                   </span>
                 </div>
-                <p className="text-[13px] text-slate-400">
-                  Oda iÃ§i gÃ¼n gÃ¼n tarihÃ§e kayÄ±tlÄ± â€¢ Otomatik Firebase senkronizasyonlu
+                <p className="text-xs text-slate-400">
+                  Sekmeler arası anında eşitleme • Oda içi gün gün tarihçe kayıtlı
                 </p>
               </div>
             </div>
@@ -1158,12 +1289,12 @@ export default function App() {
             <button
               type="button"
               onClick={() => setIsSyncModalOpen(true)}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-semibold border transition ${
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
                 syncStatus === 'synced'
                   ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/25'
                   : syncStatus === 'error'
                   ? 'bg-rose-500/15 text-rose-300 border-rose-500/40 hover:bg-rose-500/25'
-                  : 'bg-sky-500/15 text-sky-300 border-sky-500/30 hover:bg-sky-500/25'
+                  : 'bg-amber-500/15 text-amber-300 border-amber-500/40 hover:bg-amber-500/25'
               }`}
             >
               <span
@@ -1174,35 +1305,35 @@ export default function App() {
                     ? 'bg-amber-400 animate-ping'
                     : syncStatus === 'error'
                     ? 'bg-rose-500'
-                    : 'bg-sky-400'
+                    : 'bg-amber-400'
                 }`}
               />
               <span>
                 {syncStatus === 'synced'
-                  ? `CanlÄ± BaÄŸlÄ± (${lastSyncedAt})`
+                  ? `Firebase Bağlı (${lastSyncedAt})`
                   : syncStatus === 'syncing'
-                  ? 'Otomatik Kaydediliyor...'
+                  ? 'Kaydediliyor...'
                   : syncStatus === 'error'
-                  ? 'Firebase AyarÄ±'
-                  : 'Firebase Otomatik EÅŸitleme'}
+                  ? 'Bağlantı Hatası (Ayarla)'
+                  : 'Telefon ↔ PC Bağla (Firebase)'}
               </span>
             </button>
 
             <button
               type="button"
               onClick={() => setIsBulkOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
             >
-              <span>Toplu Ä°ÅŸlem</span>
+              <span>Toplu İşlem</span>
             </button>
 
             <button
               type="button"
               onClick={() => setIsLogOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
             >
-              <span>Hareket KayÄ±tlarÄ±</span>
-              <span className="ml-0.5 px-1.5 py-0.5 rounded-full text-[12px] bg-amber-500/20 text-amber-300 font-semibold">
+              <span>Hareket Kayıtları</span>
+              <span className="ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300 font-semibold">
                 {logs.length}
               </span>
             </button>
@@ -1210,17 +1341,17 @@ export default function App() {
             <button
               type="button"
               onClick={handleExportCsv}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
             >
-              <span>Rapor Ä°ndir (CSV)</span>
+              <span>Rapor İndir (CSV)</span>
             </button>
 
             <button
               type="button"
               onClick={handleResetDemo}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[13px] font-medium bg-slate-800/60 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 border border-slate-800 hover:border-rose-800/50 transition"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800/60 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 border border-slate-800 hover:border-rose-800/50 transition"
             >
-              SÄ±fÄ±rla
+              Sıfırla
             </button>
           </div>
         </div>
@@ -1228,63 +1359,109 @@ export default function App() {
 
       {/* Main Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-5 sm:px-6 space-y-5">
+        {/* Inline Quick-Connect Bar when Firebase is not yet linked */}
+        {resolvedFirebase.mode === 'none' && (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                <span>Aynı Bilgisayardaki Sekmeler Otomatik Eşitlenir • Telefon ↔ PC İçin Firebase Adresi Girin:</span>
+              </div>
+              <p className="text-[11px] text-slate-300">
+                Eski <code className="text-amber-300">page.tsx</code> dosyanızı sildiğinizde içindeki Firebase bağlantı kodu da silindiği için telefon ve bilgisayar birbirini göremez. Firebase <strong>Project ID</strong> veya <strong>Database URL</strong> bilginizi aşağıya yapıştırıp <strong>Bağla</strong>&apos;ya basın:
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+              <input
+                type="text"
+                value={quickConnectInput}
+                onChange={(e) => setQuickConnectInput(e.target.value)}
+                placeholder="Project ID veya https://...firebaseio.com"
+                className="w-full sm:w-72 px-3 py-2 bg-slate-950 border border-amber-500/40 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => handleSaveCloudConfig(quickConnectInput)}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 transition shrink-0"
+              >
+                Bağla &amp; Eşitle
+              </button>
+            </div>
+          </div>
+        )}
+
+        {syncStatus === 'error' && syncErrorMsg && (
+          <div className="bg-rose-950/60 border border-rose-500/40 rounded-xl px-4 py-2.5 flex items-center justify-between gap-2 text-xs text-rose-200">
+            <span>
+              <strong>Firebase Bağlantı Uyarısı:</strong> {syncErrorMsg} (Firestore veya Realtime Database kurallarınızın okuma/yazmaya açık olduğundan emin olun).
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsSyncModalOpen(true)}
+              className="px-2.5 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 font-semibold shrink-0"
+            >
+              Ayarları Aç
+            </button>
+          </div>
+        )}
+
         {/* KPI Summary Cards */}
         <section className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-[13px] text-slate-400">
+            <div className="flex items-center justify-between text-xs text-slate-400">
               <span>Toplam Oda</span>
               <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-medium">101-120</span>
             </div>
             <div className="mt-2 flex items-baseline justify-between">
               <span className="text-2xl font-bold text-white">{stats.total}</span>
-              <span className="text-[13px] text-emerald-400">
-                {stats.occupiedCount} Dolu â€¢ {stats.emptyCount} BoÅŸ
+              <span className="text-xs text-emerald-400">
+                {stats.occupiedCount} Dolu • {stats.emptyCount} Boş
               </span>
             </div>
           </div>
 
           <div className="bg-slate-900 border border-orange-500/20 rounded-xl p-3.5 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-[13px] text-orange-300/90">
-              <span>Tam IsÄ±tan Odalar</span>
+            <div className="flex items-center justify-between text-xs text-orange-300/90">
+              <span>Tam Isıtan Odalar</span>
               <span className="w-2 h-2 rounded-full bg-orange-500" />
             </div>
             <div className="mt-2 flex items-baseline justify-between">
               <span className="text-2xl font-bold text-orange-400">{stats.fullCount}</span>
-              <span className="text-[13px] text-slate-400">2 Vana + 5/5 KollektÃ¶r</span>
+              <span className="text-xs text-slate-400">2 Vana + 5/5 Kollektör</span>
             </div>
           </div>
 
           <div className="bg-slate-900 border border-amber-500/20 rounded-xl p-3.5 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-[13px] text-amber-300/90">
-              <span>KÄ±smi / KÄ±sÄ±k IsÄ±tma</span>
+            <div className="flex items-center justify-between text-xs text-amber-300/90">
+              <span>Kısmi / Kısık Isıtma</span>
               <span className="w-2 h-2 rounded-full bg-amber-400" />
             </div>
             <div className="mt-2 flex items-baseline justify-between">
               <span className="text-2xl font-bold text-amber-400">{stats.partialCount}</span>
-              <span className="text-[13px] text-slate-400">KollektÃ¶r/Vana KÄ±sÄ±k</span>
+              <span className="text-xs text-slate-400">Kollektör/Vana Kısık</span>
             </div>
           </div>
 
           <div className="bg-slate-900 border border-rose-500/20 rounded-xl p-3.5 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-[13px] text-rose-300/90">
-              <span>Ana VanasÄ± KapalÄ±</span>
+            <div className="flex items-center justify-between text-xs text-rose-300/90">
+              <span>Ana Vanası Kapalı</span>
               <span className="w-2 h-2 rounded-full bg-rose-500" />
             </div>
             <div className="mt-2 flex items-baseline justify-between">
               <span className="text-2xl font-bold text-rose-400">{stats.closedCount}</span>
-              <span className="text-[13px] text-slate-400">IsÄ± AkÄ±ÅŸÄ± Kesik (%0)</span>
+              <span className="text-xs text-slate-400">Isı Akışı Kesik (%0)</span>
             </div>
           </div>
 
           <div className="col-span-2 lg:col-span-1 bg-slate-900 border border-sky-500/20 rounded-xl p-3.5 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-[13px] text-sky-300/90">
-              <span>Aktif KollektÃ¶r OranÄ±</span>
-              <span className="text-[13px] font-semibold text-sky-400">%{stats.roundedFlow}</span>
+            <div className="flex items-center justify-between text-xs text-sky-300/90">
+              <span>Aktif Kollektör Oranı</span>
+              <span className="text-xs font-semibold text-sky-400">%{stats.roundedFlow}</span>
             </div>
             <div className="mt-2">
               <div className="flex items-baseline justify-between mb-1">
                 <span className="text-xl font-bold text-white">{stats.roundedFlow} / 100</span>
-                <span className="text-[12px] text-slate-400">Su GeÃ§en Hat</span>
+                <span className="text-[11px] text-slate-400">Su Geçen Hat</span>
               </div>
               <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
                 <div
@@ -1296,40 +1473,40 @@ export default function App() {
           </div>
         </section>
 
-        {/* Main View Switcher: Oda Paneli vs GÃ¼n GÃ¼n Oda TarihÃ§esi */}
+        {/* Main View Switcher: Oda Paneli vs Gün Gün Oda Tarihçesi */}
         <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-xl p-2.5">
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setMainTab('grid')}
-              className={`px-4 py-2 rounded-lg text-[13px] font-bold transition ${
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition ${
                 mainTab === 'grid'
                   ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow'
                   : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
               }`}
             >
-              Oda Vana &amp; KollektÃ¶r Paneli (101â€“120)
+              Oda Vana &amp; Kollektör Paneli (101–120)
             </button>
             <button
               type="button"
               onClick={() => setMainTab('daily_history')}
-              className={`px-4 py-2 rounded-lg text-[13px] font-bold transition flex items-center gap-1.5 ${
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
                 mainTab === 'daily_history'
                   ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow'
                   : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
               }`}
             >
-              <span>GÃ¼n GÃ¼n Oda DeÄŸiÅŸiklik KayÄ±tlarÄ±</span>
-              <span className="px-1.5 py-0.5 rounded-full text-[12px] bg-slate-950/30 text-current">
-                TarihÃ§e
+              <span>Gün Gün Oda Değişiklik Kayıtları</span>
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-950/30 text-current">
+                Tarihçe
               </span>
             </button>
           </div>
 
-          <div className="flex items-center gap-2 text-[13px] text-slate-400 px-2">
+          <div className="flex items-center gap-2 text-xs text-slate-400 px-2">
             <span>
               Cihaz: <strong className="text-amber-400">{deviceName}</strong>
-              {resolvedFirebase.label ? ` â€¢ ${resolvedFirebase.label}` : ''}
+              {resolvedFirebase.label ? ` • ${resolvedFirebase.label}` : ' • Sekme Eşitleme Aktif'}
             </span>
           </div>
         </div>
@@ -1341,18 +1518,18 @@ export default function App() {
               <div className="flex flex-wrap items-center gap-1.5">
                 {(
                   [
-                    { id: 'all', label: 'TÃ¼mÃ¼ (20)' },
-                    { id: 'full', label: 'Tam AÃ§Ä±k (5/5)' },
-                    { id: 'partial', label: 'KollektÃ¶rÃ¼ KÄ±sÄ±k Olanlar' },
-                    { id: 'main_closed', label: 'Ana VanasÄ± KapalÄ±' },
-                    { id: 'mismatch', label: 'Dikkat / UyarÄ±' },
+                    { id: 'all', label: 'Tümü (20)' },
+                    { id: 'full', label: 'Tam Açık (5/5)' },
+                    { id: 'partial', label: 'Kollektörü Kısık Olanlar' },
+                    { id: 'main_closed', label: 'Ana Vanası Kapalı' },
+                    { id: 'mismatch', label: 'Dikkat / Uyarı' },
                   ] as const
                 ).map((tab) => (
                   <button
                     key={tab.id}
                     type="button"
                     onClick={() => setActiveFilter(tab.id)}
-                    className={`px-3 py-1.5 rounded-lg text-[13px] transition ${
+                    className={`px-3 py-1.5 rounded-lg text-xs transition ${
                       activeFilter === tab.id
                         ? 'bg-amber-500 text-slate-950 font-semibold'
                         : 'bg-slate-800 text-slate-300 hover:bg-slate-700 font-medium'
@@ -1368,17 +1545,17 @@ export default function App() {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Oda no (Ã¶rn: 101) veya not ara..."
-                  className="flex-1 sm:w-56 px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-[13px] text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                  placeholder="Oda no (örn: 101) veya not ara..."
+                  className="flex-1 sm:w-56 px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
                 />
                 <select
                   value={occupancyFilter}
                   onChange={(e) => setOccupancyFilter(e.target.value as 'all' | 'occupied' | 'empty')}
-                  className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-[13px] text-slate-200 focus:outline-none focus:border-amber-500"
+                  className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
                 >
-                  <option value="all">TÃ¼m Doluluk DurumlarÄ±</option>
+                  <option value="all">Tüm Doluluk Durumları</option>
                   <option value="occupied">Sadece Dolu Odalar</option>
-                  <option value="empty">Sadece BoÅŸ Odalar</option>
+                  <option value="empty">Sadece Boş Odalar</option>
                 </select>
               </div>
             </section>
@@ -1414,45 +1591,45 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => handleToggleOccupancy(room.id)}
-                            className={`px-2 py-0.5 rounded text-[12px] font-semibold border transition ${
+                            className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition ${
                               room.occupied
                                 ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25'
                                 : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'
                             }`}
                           >
-                            {room.occupied ? 'DOLU' : 'BOÅ'}
+                            {room.occupied ? 'DOLU' : 'BOŞ'}
                           </button>
                         </div>
-                        <span className={`px-2 py-0.5 rounded-full text-[12px] font-semibold ${badgeClass}`}>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${badgeClass}`}>
                           {m.statusLabel}
                         </span>
                       </div>
 
                       {/* Warnings */}
                       {m.allMainClosed && m.openCollectorCount > 0 && (
-                        <div className="mt-2 px-2.5 py-1 rounded-lg bg-rose-950/70 border border-rose-800/60 text-[12px] text-rose-300 flex items-center gap-1.5">
+                        <div className="mt-2 px-2.5 py-1 rounded-lg bg-rose-950/70 border border-rose-800/60 text-[11px] text-rose-300 flex items-center gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
-                          <span>Ana vanalar kapalÄ±! ({m.openCollectorCount} kollektÃ¶r aÃ§Ä±k ama su geÃ§miyor)</span>
+                          <span>Ana vanalar kapalı! ({m.openCollectorCount} kollektör açık ama su geçmiyor)</span>
                         </div>
                       )}
                       {m.oneMainClosed && (
-                        <div className="mt-2 px-2.5 py-1 rounded-lg bg-rose-950/70 border border-rose-800/60 text-[12px] text-rose-300 flex items-center gap-1.5">
+                        <div className="mt-2 px-2.5 py-1 rounded-lg bg-rose-950/70 border border-rose-800/60 text-[11px] text-rose-300 flex items-center gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
-                          <span>Ana vanalardan biri kapalÄ±! Devirdaim iÃ§in 2 ana vana da aÃ§Ä±k olmalÄ±.</span>
+                          <span>Ana vanalardan biri kapalı! Devirdaim için 2 ana vana da açık olmalı.</span>
                         </div>
                       )}
                       {m.bothMainOpen && m.openCollectorCount === 0 && (
-                        <div className="mt-2 px-2.5 py-1 rounded-lg bg-amber-950/70 border border-amber-800/60 text-[12px] text-amber-300 flex items-center gap-1.5">
+                        <div className="mt-2 px-2.5 py-1 rounded-lg bg-amber-950/70 border border-amber-800/60 text-[11px] text-amber-300 flex items-center gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-                          <span>Ana vanalar aÃ§Ä±k ama 5 kollektÃ¶rÃ¼n tamamÄ± kapalÄ±!</span>
+                          <span>Ana vanalar açık ama 5 kollektörün tamamı kapalı!</span>
                         </div>
                       )}
 
                       {/* 2 Main Valves */}
                       <div className="mt-3">
-                        <div className="flex items-center justify-between text-[12px] text-slate-400 mb-1">
-                          <span>Ana Vanalar ({m.openMainCount}/2 AÃ§Ä±k)</span>
-                          <span className="font-medium text-slate-300">IsÄ± GÃ¼cÃ¼: %{m.effectivePct}</span>
+                        <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                          <span>Ana Vanalar ({m.openMainCount}/2 Açık)</span>
+                          <span className="font-medium text-slate-300">Isı Gücü: %{m.effectivePct}</span>
                         </div>
                         <div className="grid grid-cols-2 gap-1.5">
                           {([0, 1] as const).map((vIdx) => {
@@ -1462,7 +1639,7 @@ export default function App() {
                                 key={vIdx}
                                 type="button"
                                 onClick={() => handleToggleMainValve(room.id, vIdx)}
-                                className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-[13px] font-medium transition ${
+                                className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-xs font-medium transition ${
                                   isOpen
                                     ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25'
                                     : 'bg-rose-950/50 border-rose-800/50 text-rose-400 hover:bg-rose-900/40'
@@ -1472,7 +1649,7 @@ export default function App() {
                                   <span className={`w-2 h-2 rounded-full ${isOpen ? 'bg-emerald-400' : 'bg-rose-500'}`} />
                                   <span>Ana Vana {vIdx + 1}</span>
                                 </span>
-                                <span className="text-[12px] font-bold uppercase">{isOpen ? 'AÃ‡IK' : 'KAPALI'}</span>
+                                <span className="text-[10px] font-bold uppercase">{isOpen ? 'AÇIK' : 'KAPALI'}</span>
                               </button>
                             );
                           })}
@@ -1481,9 +1658,9 @@ export default function App() {
 
                       {/* 5 Collectors */}
                       <div className="mt-3">
-                        <div className="flex items-center justify-between text-[12px] text-slate-400 mb-1">
-                          <span>KollektÃ¶r HatlarÄ± ({m.openCollectorCount}/5 AÃ§Ä±k)</span>
-                          <span className="text-[12px] text-slate-500">TÄ±kla AÃ§/Kapat</span>
+                        <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                          <span>Kollektör Hatları ({m.openCollectorCount}/5 Açık)</span>
+                          <span className="text-[10px] text-slate-500">Tıkla Aç/Kapat</span>
                         </div>
                         <div className="grid grid-cols-5 gap-1.5">
                           {([0, 1, 2, 3, 4] as const).map((cIdx) => {
@@ -1509,11 +1686,11 @@ export default function App() {
                                 key={cIdx}
                                 type="button"
                                 onClick={() => handleToggleCollector(room.id, cIdx)}
-                                title={`${COLLECTOR_LABELS[cIdx]}: ${cOpen ? 'AÃ‡IK' : 'KAPALI'}`}
-                                className={`flex flex-col items-center justify-center py-1.5 rounded-lg border text-[13px] transition ${cStyle}`}
+                                title={`${COLLECTOR_LABELS[cIdx]}: ${cOpen ? 'AÇIK' : 'KAPALI'}`}
+                                className={`flex flex-col items-center justify-center py-1.5 rounded-lg border text-xs transition ${cStyle}`}
                               >
-                                <span className="text-[12px] leading-none">K{cIdx + 1}</span>
-                                <span className="text-[9px] mt-0.5 opacity-85">{cOpen ? 'AÃ§Ä±k' : 'KapalÄ±'}</span>
+                                <span className="text-[11px] leading-none">K{cIdx + 1}</span>
+                                <span className="text-[9px] mt-0.5 opacity-85">{cOpen ? 'Açık' : 'Kapalı'}</span>
                               </button>
                             );
                           })}
@@ -1522,7 +1699,7 @@ export default function App() {
 
                       {/* Room Note */}
                       {room.note && (
-                        <div className="mt-2.5 px-2.5 py-1.5 rounded-lg bg-slate-950/90 border border-slate-800/80 text-[12px] text-slate-300 line-clamp-2">
+                        <div className="mt-2.5 px-2.5 py-1.5 rounded-lg bg-slate-950/90 border border-slate-800/80 text-[11px] text-slate-300 line-clamp-2">
                           <span className="text-amber-400 font-medium">Not:</span> {room.note}
                         </div>
                       )}
@@ -1534,13 +1711,13 @@ export default function App() {
                           onClick={() => openRoomDetail(room, 'history')}
                           className="mt-2 w-full text-left px-2.5 py-1.5 rounded-lg bg-slate-950/60 hover:bg-slate-800/80 border border-slate-800/90 transition group"
                         >
-                          <div className="flex items-center justify-between text-[12px] text-slate-400">
+                          <div className="flex items-center justify-between text-[10px] text-slate-400">
                             <span className="font-semibold text-sky-400 group-hover:underline">
-                              Son KayÄ±t ({latestHistory.dateLabel} {latestHistory.time})
+                              Son Kayıt ({latestHistory.dateLabel} {latestHistory.time})
                             </span>
-                            <span>{(room.history || []).length} kayÄ±t â†’</span>
+                            <span>{(room.history || []).length} kayıt →</span>
                           </div>
-                          <div className="text-[12px] text-slate-300 truncate mt-0.5">
+                          <div className="text-[11px] text-slate-300 truncate mt-0.5">
                             {latestHistory.action}
                           </div>
                         </button>
@@ -1553,21 +1730,21 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => handleQuickPreset(room.id, 'full')}
-                          className="px-2 py-1 rounded text-[12px] font-medium bg-slate-800 hover:bg-orange-500/20 text-slate-300 hover:text-orange-300 transition"
+                          className="px-2 py-1 rounded text-[10px] font-medium bg-slate-800 hover:bg-orange-500/20 text-slate-300 hover:text-orange-300 transition"
                         >
-                          Tam AÃ§
+                          Tam Aç
                         </button>
                         <button
                           type="button"
                           onClick={() => handleQuickPreset(room.id, 'eco')}
-                          className="px-2 py-1 rounded text-[12px] font-medium bg-slate-800 hover:bg-amber-500/20 text-slate-300 hover:text-amber-300 transition"
+                          className="px-2 py-1 rounded text-[10px] font-medium bg-slate-800 hover:bg-amber-500/20 text-slate-300 hover:text-amber-300 transition"
                         >
-                          3/5 KÄ±s
+                          3/5 Kıs
                         </button>
                         <button
                           type="button"
                           onClick={() => handleQuickPreset(room.id, 'close_main')}
-                          className="px-2 py-1 rounded text-[12px] font-medium bg-slate-800 hover:bg-rose-500/20 text-slate-300 hover:text-rose-300 transition"
+                          className="px-2 py-1 rounded text-[10px] font-medium bg-slate-800 hover:bg-rose-500/20 text-slate-300 hover:text-rose-300 transition"
                         >
                           Ana Vana Kapat
                         </button>
@@ -1575,7 +1752,7 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => openRoomDetail(room, 'history')}
-                        className="px-2 py-1 rounded text-[12px] font-semibold text-amber-400 hover:bg-amber-500/10 transition"
+                        className="px-2 py-1 rounded text-[10px] font-semibold text-amber-400 hover:bg-amber-500/10 transition"
                       >
                         Detay / Not ({(room.history || []).length})
                       </button>
@@ -1587,7 +1764,7 @@ export default function App() {
 
             {filteredRooms.length === 0 && (
               <div className="bg-slate-900 border border-slate-800 rounded-xl p-10 text-center space-y-3">
-                <p className="text-sm text-slate-300 font-medium">SeÃ§ilen filtreye uygun oda bulunamadÄ±.</p>
+                <p className="text-sm text-slate-300 font-medium">Seçilen filtreye uygun oda bulunamadı.</p>
                 <button
                   type="button"
                   onClick={() => {
@@ -1595,7 +1772,7 @@ export default function App() {
                     setOccupancyFilter('all');
                     setSearchQuery('');
                   }}
-                  className="px-3.5 py-1.5 rounded-lg text-[13px] font-semibold bg-amber-500 text-slate-950 hover:bg-amber-400 transition"
+                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 text-slate-950 hover:bg-amber-400 transition"
                 >
                   Filtreleri Temizle
                 </button>
@@ -1603,22 +1780,22 @@ export default function App() {
             )}
           </>
         ) : (
-          /* GÃœN GÃœN ODA DEÄÄ°ÅÄ°KLÄ°K KAYITLARI (DAILY ROOM HISTORY VIEW) */
+          /* GÜN GÜN ODA DEĞİŞİKLİK KAYITLARI (DAILY ROOM HISTORY VIEW) */
           <section className="space-y-4">
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
-                <h2 className="text-sm font-bold text-white">Oda Ä°Ã§i GÃ¼n GÃ¼n DeÄŸiÅŸiklik KayÄ±tlarÄ± (101â€“120)</h2>
-                <p className="text-[13px] text-slate-400">
-                  Hangi gÃ¼n, hangi odada, saat kaÃ§ta hangi vana veya kollektÃ¶r deÄŸiÅŸtirildi detaylÄ± listesi
+                <h2 className="text-sm font-bold text-white">Oda İçi Gün Gün Değişiklik Kayıtları (101–120)</h2>
+                <p className="text-xs text-slate-400">
+                  Hangi gün, hangi odada, saat kaçta hangi vana veya kollektör değiştirildi detaylı listesi
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <select
                   value={historyDateFilter}
                   onChange={(e) => setHistoryDateFilter(e.target.value)}
-                  className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-[13px] text-slate-200 focus:outline-none focus:border-amber-500"
+                  className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
                 >
-                  <option value="all">TÃ¼m GÃ¼nler</option>
+                  <option value="all">Tüm Günler</option>
                   {allRoomHistoryDates.map((d) => (
                     <option key={d} value={d}>
                       {d}
@@ -1629,9 +1806,9 @@ export default function App() {
                 <select
                   value={historyRoomFilter}
                   onChange={(e) => setHistoryRoomFilter(e.target.value)}
-                  className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-[13px] text-slate-200 focus:outline-none focus:border-amber-500"
+                  className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
                 >
-                  <option value="all">TÃ¼m Odalar (101-120)</option>
+                  <option value="all">Tüm Odalar (101-120)</option>
                   {rooms.map((r) => (
                     <option key={r.id} value={String(r.id)}>
                       Oda {r.id}
@@ -1642,8 +1819,8 @@ export default function App() {
             </div>
 
             {groupedDailyRoomHistory.length === 0 ? (
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center text-[13px] text-slate-400">
-                SeÃ§ilen kriterlere uygun gÃ¼nlÃ¼k oda kaydÄ± bulunamadÄ±.
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center text-xs text-slate-400">
+                Seçilen kriterlere uygun günlük oda kaydı bulunamadı.
               </div>
             ) : (
               groupedDailyRoomHistory.map((group) => (
@@ -1652,10 +1829,10 @@ export default function App() {
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
                       <h3 className="text-sm font-bold text-white">{group.dateLabel}</h3>
-                      <span className="text-[13px] text-slate-500">({group.dateIso})</span>
+                      <span className="text-xs text-slate-500">({group.dateIso})</span>
                     </div>
-                    <span className="px-2.5 py-0.5 rounded-full text-[13px] font-semibold bg-amber-500/15 text-amber-300">
-                      {group.items.length} Ä°ÅŸlem
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300">
+                      {group.items.length} İşlem
                     </span>
                   </div>
                   <div className="divide-y divide-slate-800/70">
@@ -1671,18 +1848,18 @@ export default function App() {
                               const r = rooms.find((rm) => rm.id === item.roomId);
                               if (r) openRoomDetail(r, 'history');
                             }}
-                            className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-bold text-[13px] shrink-0 transition"
+                            className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-bold text-xs shrink-0 transition"
                           >
                             Oda {item.roomId}
                           </button>
                           <div>
-                            <div className="text-[13px] font-medium text-slate-100">{item.action}</div>
-                            <div className="text-[12px] text-slate-400 mt-0.5">
-                              Durum Ã–zeti: <span className="text-slate-300">{item.summary}</span>
+                            <div className="text-xs font-medium text-slate-100">{item.action}</div>
+                            <div className="text-[11px] text-slate-400 mt-0.5">
+                              Durum Özeti: <span className="text-slate-300">{item.summary}</span>
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 sm:shrink-0 text-[12px] text-slate-400">
+                        <div className="flex items-center gap-2 sm:shrink-0 text-[11px] text-slate-400">
                           <span className="px-2 py-0.5 rounded bg-slate-800 text-sky-300 font-medium">
                             {item.device}
                           </span>
@@ -1705,16 +1882,16 @@ export default function App() {
             <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
               <div>
                 <h2 className="text-base font-bold text-white">
-                  Oda {selectedRoom.id} â€” Vana KontrolÃ¼ &amp; GÃ¼n GÃ¼n KayÄ±tlar
+                  Oda {selectedRoom.id} — Vana Kontrolü &amp; Gün Gün Kayıtlar
                 </h2>
-                <p className="text-[13px] text-slate-400">Son deÄŸiÅŸiklik: {selectedRoom.updatedAt}</p>
+                <p className="text-xs text-slate-400">Son değişiklik: {selectedRoom.updatedAt}</p>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedRoomId(null)}
-                className="px-2.5 py-1 rounded-lg text-[13px] text-slate-400 hover:text-white hover:bg-slate-800"
+                className="px-2.5 py-1 rounded-lg text-xs text-slate-400 hover:text-white hover:bg-slate-800"
               >
-                Kapat âœ•
+                Kapat ✕
               </button>
             </div>
 
@@ -1723,25 +1900,25 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setModalTab('controls')}
-                className={`px-3.5 py-2 text-[13px] font-bold border-b-2 transition ${
+                className={`px-3.5 py-2 text-xs font-bold border-b-2 transition ${
                   modalTab === 'controls'
                     ? 'border-amber-500 text-amber-400'
                     : 'border-transparent text-slate-400 hover:text-slate-200'
                 }`}
               >
-                Vana &amp; KollektÃ¶r AyarlarÄ±
+                Vana &amp; Kollektör Ayarları
               </button>
               <button
                 type="button"
                 onClick={() => setModalTab('history')}
-                className={`px-3.5 py-2 text-[13px] font-bold border-b-2 transition flex items-center gap-1.5 ${
+                className={`px-3.5 py-2 text-xs font-bold border-b-2 transition flex items-center gap-1.5 ${
                   modalTab === 'history'
                     ? 'border-amber-500 text-amber-400'
                     : 'border-transparent text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <span>Oda Ä°Ã§i GÃ¼n GÃ¼n GeÃ§miÅŸ</span>
-                <span className="px-1.5 py-0.2 rounded-full text-[12px] bg-amber-500/20 text-amber-300">
+                <span>Oda İçi Gün Gün Geçmiş</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500/20 text-amber-300">
                   {(selectedRoom.history || []).length}
                 </span>
               </button>
@@ -1751,51 +1928,51 @@ export default function App() {
               <div className="p-5 space-y-5 max-h-[75vh] overflow-y-auto">
                 <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-950 p-3 rounded-xl border border-slate-800">
                   <div className="flex items-center gap-2">
-                    <span className="text-[13px] text-slate-400">Oda Durumu:</span>
+                    <span className="text-xs text-slate-400">Oda Durumu:</span>
                     <button
                       type="button"
                       onClick={() => handleToggleOccupancy(selectedRoom.id)}
-                      className={`px-2.5 py-1 rounded-md text-[13px] font-semibold border transition ${
+                      className={`px-2.5 py-1 rounded-md text-xs font-semibold border transition ${
                         selectedRoom.occupied
                           ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                           : 'bg-slate-800 text-slate-300 border-slate-700'
                       }`}
                     >
-                      {selectedRoom.occupied ? 'MÃ¼ÅŸteri Var (DOLU)' : 'Oda BoÅŸ (BOÅ)'}
+                      {selectedRoom.occupied ? 'Müşteri Var (DOLU)' : 'Oda Boş (BOŞ)'}
                     </button>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => handleQuickPreset(selectedRoom.id, 'full')}
-                      className="px-2.5 py-1 rounded text-[13px] font-medium bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 border border-orange-500/30 transition"
+                      className="px-2.5 py-1 rounded text-xs font-medium bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 border border-orange-500/30 transition"
                     >
-                      Tam AÃ§ (2V + 5K)
+                      Tam Aç (2V + 5K)
                     </button>
                     <button
                       type="button"
                       onClick={() => handleQuickPreset(selectedRoom.id, 'eco')}
-                      className="px-2.5 py-1 rounded text-[13px] font-medium bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/30 transition"
+                      className="px-2.5 py-1 rounded text-xs font-medium bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/30 transition"
                     >
-                      KÄ±sÄ±k Mod (3/5 K)
+                      Kısık Mod (3/5 K)
                     </button>
                     <button
                       type="button"
                       onClick={() => handleQuickPreset(selectedRoom.id, 'close_main')}
-                      className="px-2.5 py-1 rounded text-[13px] font-medium bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 border border-rose-500/30 transition"
+                      className="px-2.5 py-1 rounded text-xs font-medium bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 border border-rose-500/30 transition"
                     >
-                      Ana VanayÄ± Kapat
+                      Ana Vanayı Kapat
                     </button>
                   </div>
                 </div>
 
                 {/* 2 Main Valves */}
                 <div>
-                  <label className="block text-[13px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
-                    Ana Vanalar (2 Adet - Oda Ana GiriÅŸ &amp; DÃ¶nÃ¼ÅŸ)
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                    Ana Vanalar (2 Adet - Oda Ana Giriş &amp; Dönüş)
                   </label>
                   <div className="grid grid-cols-2 gap-3">
-                    {(['Ana Vana 1 (SÄ±cak GiriÅŸ)', 'Ana Vana 2 (DÃ¶nÃ¼ÅŸ HattÄ±)'] as const).map((label, idx) => {
+                    {(['Ana Vana 1 (Sıcak Giriş)', 'Ana Vana 2 (Dönüş Hattı)'] as const).map((label, idx) => {
                       const vIdx = idx as 0 | 1;
                       const isOpen = selectedRoom.mainValves[vIdx];
                       return (
@@ -1810,19 +1987,19 @@ export default function App() {
                           }`}
                         >
                           <div>
-                            <div className={`text-[13px] font-bold ${isOpen ? 'text-emerald-300' : 'text-rose-300'}`}>
+                            <div className={`text-xs font-bold ${isOpen ? 'text-emerald-300' : 'text-rose-300'}`}>
                               {label}
                             </div>
-                            <div className="text-[12px] text-slate-400 mt-0.5">
-                              {isOpen ? 'Su geÃ§iÅŸi aktif' : 'Vana kapalÄ±'}
+                            <div className="text-[11px] text-slate-400 mt-0.5">
+                              {isOpen ? 'Su geçişi aktif' : 'Vana kapalı'}
                             </div>
                           </div>
                           <span
-                            className={`px-2 py-0.5 rounded text-[12px] font-bold ${
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                               isOpen ? 'bg-emerald-500 text-slate-950' : 'bg-rose-500 text-white'
                             }`}
                           >
-                            {isOpen ? 'AÃ‡IK' : 'KAPALI'}
+                            {isOpen ? 'AÇIK' : 'KAPALI'}
                           </span>
                         </button>
                       );
@@ -1833,11 +2010,11 @@ export default function App() {
                 {/* 5 Collectors */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="text-[13px] font-semibold uppercase tracking-wider text-slate-400">
-                      KollektÃ¶r HatlarÄ± (5 Adet)
+                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      Kollektör Hatları (5 Adet)
                     </label>
-                    <span className="text-[13px] font-medium text-amber-400">
-                      {selectedRoom.collectors.filter(Boolean).length} / 5 KollektÃ¶r AÃ§Ä±k
+                    <span className="text-xs font-medium text-amber-400">
+                      {selectedRoom.collectors.filter(Boolean).length} / 5 Kollektör Açık
                     </span>
                   </div>
                   <div className="space-y-2">
@@ -1850,29 +2027,29 @@ export default function App() {
                         >
                           <div className="flex items-center gap-2.5">
                             <span
-                              className={`w-6 h-6 rounded-lg flex items-center justify-center text-[13px] font-bold ${
+                              className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold ${
                                 cOpen ? 'bg-orange-500 text-slate-950' : 'bg-slate-800 text-slate-500'
                               }`}
                             >
                               K{cIdx + 1}
                             </span>
                             <div>
-                              <div className="text-[13px] font-medium text-slate-200">{COLLECTOR_LABELS[cIdx]}</div>
-                              <div className="text-[12px] text-slate-500">
-                                {cOpen ? 'Mandal AÃ§Ä±k (%20 Kapasite)' : 'Mandal KapalÄ±'}
+                              <div className="text-xs font-medium text-slate-200">{COLLECTOR_LABELS[cIdx]}</div>
+                              <div className="text-[10px] text-slate-500">
+                                {cOpen ? 'Mandal Açık (%20 Kapasite)' : 'Mandal Kapalı'}
                               </div>
                             </div>
                           </div>
                           <button
                             type="button"
                             onClick={() => handleToggleCollector(selectedRoom.id, cIdx)}
-                            className={`px-3 py-1 rounded-lg text-[13px] font-semibold transition ${
+                            className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
                               cOpen
                                 ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30 hover:bg-orange-500/30'
                                 : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                             }`}
                           >
-                            {cOpen ? 'AÃ§Ä±k (Kapat)' : 'KapalÄ± (AÃ§)'}
+                            {cOpen ? 'Açık (Kapat)' : 'Kapalı (Aç)'}
                           </button>
                         </div>
                       );
@@ -1882,15 +2059,15 @@ export default function App() {
 
                 {/* Note */}
                 <div>
-                  <label className="block text-[13px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-                    Oda GÃ¼ncel Notu
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                    Oda Güncel Notu
                   </label>
                   <textarea
                     rows={2}
                     value={modalNote}
                     onChange={(e) => setModalNote(e.target.value)}
-                    placeholder="Ã–rn: MÃ¼ÅŸteri Ã§ok sÄ±cak dediÄŸi iÃ§in 2 kollektÃ¶r kapatÄ±ldÄ±..."
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-[13px] text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    placeholder="Örn: Müşteri çok sıcak dediği için 2 kollektör kapatıldı..."
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
                   />
                 </div>
               </div>
@@ -1902,19 +2079,19 @@ export default function App() {
                     type="text"
                     value={customHistoryEntry}
                     onChange={(e) => setCustomHistoryEntry(e.target.value)}
-                    placeholder="Bu oda iÃ§in yeni gÃ¼nlÃ¼k kontrol/bakÄ±m notu ekle..."
-                    className="flex-1 px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-[13px] text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    placeholder="Bu oda için yeni günlük kontrol/bakım notu ekle..."
+                    className="flex-1 px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
                   />
                   <button
                     type="submit"
-                    className="px-3.5 py-2 rounded-xl text-[13px] font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 shrink-0 transition"
+                    className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 shrink-0 transition"
                   >
                     Kayda Ekle
                   </button>
                 </form>
 
                 {selectedRoomHistoryByDay.length === 0 ? (
-                  <p className="text-[13px] text-slate-500 text-center py-6">Bu oda iÃ§in henÃ¼z kayÄ±t bulunmuyor.</p>
+                  <p className="text-xs text-slate-500 text-center py-6">Bu oda için henüz kayıt bulunmuyor.</p>
                 ) : (
                   <div className="space-y-4">
                     {selectedRoomHistoryByDay.map((dayGroup) => (
@@ -1923,18 +2100,18 @@ export default function App() {
                         className="border border-slate-800 rounded-xl overflow-hidden bg-slate-950/60"
                       >
                         <div className="px-3.5 py-2 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
-                          <span className="text-[13px] font-bold text-amber-400">{dayGroup.dateLabel}</span>
-                          <span className="text-[12px] text-slate-400">{dayGroup.items.length} deÄŸiÅŸiklik</span>
+                          <span className="text-xs font-bold text-amber-400">{dayGroup.dateLabel}</span>
+                          <span className="text-[11px] text-slate-400">{dayGroup.items.length} değişiklik</span>
                         </div>
                         <div className="divide-y divide-slate-800/60">
                           {dayGroup.items.map((h) => (
                             <div key={h.id} className="p-3 space-y-1">
-                              <div className="flex items-center justify-between text-[12px]">
+                              <div className="flex items-center justify-between text-[11px]">
                                 <span className="font-semibold text-sky-300">{h.device}</span>
                                 <span className="font-mono text-slate-400">{h.time}</span>
                               </div>
-                              <div className="text-[13px] text-slate-100 font-medium">{h.action}</div>
-                              <div className="text-[12px] text-slate-400">{h.summary}</div>
+                              <div className="text-xs text-slate-100 font-medium">{h.action}</div>
+                              <div className="text-[11px] text-slate-400">{h.summary}</div>
                             </div>
                           ))}
                         </div>
@@ -1946,13 +2123,13 @@ export default function App() {
             )}
 
             <div className="px-5 py-3.5 bg-slate-950 border-t border-slate-800 flex items-center justify-between gap-2">
-              <span className="text-[12px] text-slate-400">
-                Her vana/kollektÃ¶r deÄŸiÅŸimi otomatik olarak gÃ¼n ve saatiyle kaydedilir.
+              <span className="text-[11px] text-slate-400">
+                Her vana/kollektör değişimi otomatik olarak gün ve saatiyle kaydedilir.
               </span>
               <button
                 type="button"
                 onClick={handleSaveModalNote}
-                className="px-4 py-2 rounded-xl text-[13px] font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 transition"
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 transition"
               >
                 Notu Kaydet & Kapat
               </button>
@@ -1967,43 +2144,44 @@ export default function App() {
           <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl">
             <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
               <div>
-                <h2 className="text-base font-bold text-white">Otomatik Firebase &amp; Cihaz AyarlarÄ±</h2>
-                <p className="text-[13px] text-slate-400">
-                  Vana deÄŸiÅŸtiÄŸinde tuÅŸa basmadan otomatik olarak tÃ¼m cihazlarda gÃ¼ncellenir
+                <h2 className="text-base font-bold text-white">Telefon ↔ Bilgisayar Bağlama Rehberi</h2>
+                <p className="text-xs text-slate-400">
+                  Telefonda ve bilgisayarda aynı anda otomatik değişmesi için 2 kolay yöntem
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsSyncModalOpen(false)}
-                className="px-2.5 py-1 rounded-lg text-[13px] text-slate-400 hover:text-white hover:bg-slate-800"
+                className="px-2.5 py-1 rounded-lg text-xs text-slate-400 hover:text-white hover:bg-slate-800"
               >
-                Kapat âœ•
+                Kapat ✕
               </button>
             </div>
 
             <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
-              {/* Auto-detection status */}
-              <div className="p-3.5 rounded-xl bg-slate-950 border border-emerald-500/30 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[13px] font-bold text-emerald-400">Otomatik Senkronizasyon Modu Aktif</span>
-                  <span className="text-[12px] text-slate-400">AnlÄ±k KayÄ±t</span>
+              <div className="p-3.5 rounded-xl bg-slate-950 border border-amber-500/30 space-y-2">
+                <div className="text-xs font-bold text-amber-400">
+                  Neden eski panelinizde çalışıyordu da şimdi bağlamak gerekiyor?
                 </div>
-                <p className="text-[12px] text-slate-300 leading-relaxed">
-                  Herhangi bir vanaya veya kollektÃ¶re dokunduÄŸunuz anda ekstra bir tuÅŸa basmanÄ±za gerek kalmadan <strong>otomatik olarak</strong> kaydedilir. Projenizde <code className="text-amber-300">.env</code> iÃ§inde Firebase tanÄ±mlÄ±ysa doÄŸrudan onu kullanÄ±r; tanÄ±mlÄ± deÄŸilse aÅŸaÄŸÄ±ya Firebase <strong>Project ID</strong> veya <strong>firebaseConfig</strong> kodunuzu bir kez yapÄ±ÅŸtÄ±rmanÄ±z yeterlidir:
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  Eski <code className="text-amber-300">app/page.tsx</code> dosyanızı sildiğinizde, o dosyanın içindeki <strong>Firebase adresiniz (projectId / databaseURL)</strong> de silindi. GitHub&apos;da deponuzun <strong>Commits (Geçmiş)</strong> bölümünden eski <code className="text-amber-300">page.tsx</code> dosyanıza bakıp içindeki <code className="text-emerald-300">projectId</code> veya <code className="text-emerald-300">firebaseConfig</code> bilgisini aşağıya yapıştırabilirsiniz:
                 </p>
                 <textarea
                   rows={3}
-                  value={cloudUrl}
-                  onChange={(e) => setCloudUrl(e.target.value)}
-                  placeholder='Firebase Project ID (Ã¶rn: otel-takip-123) veya firebaseConfig kodunuzu buraya yapÄ±ÅŸtÄ±rÄ±n...'
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-[13px] text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
+                  value={quickConnectInput}
+                  onChange={(e) => setQuickConnectInput(e.target.value)}
+                  placeholder='Eski kodunuzdaki projectId (örn: otel-takip-123) veya firebaseConfig bloğunu buraya yapıştırın...'
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
                 />
+                <p className="text-[11px] text-slate-400">
+                  <strong>Kalıcı Çözüm:</strong> Bu bilgiyi kodun en üstündeki <strong>26. satırda</strong> bulunan <code className="text-amber-300">DEFAULT_FIREBASE_CONFIG</code> içine yazıp GitHub&apos;a kaydederseniz, telefon ve bilgisayarınızda hiçbir ayar yapmanıza gerek kalmadan doğrudan birbirine bağlanır!
+                </p>
               </div>
 
               {/* Device Name */}
               <div>
-                <label className="block text-[13px] font-semibold text-slate-300 mb-1.5">
-                  Bu CihazÄ±n AdÄ± (Oda GeÃ§miÅŸinde Kim DeÄŸiÅŸtirdi GÃ¶rÃ¼nmesi Ä°Ã§in)
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Bu Cihazın Adı (Oda Geçmişinde Kim Değiştirdi Görünmesi İçin)
                 </label>
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   {['Telefon', 'Bilgisayar', 'Resepsiyon', 'Teknik Servis'].map((preset) => (
@@ -2011,7 +2189,7 @@ export default function App() {
                       key={preset}
                       type="button"
                       onClick={() => setDeviceName(preset)}
-                      className={`px-2.5 py-1 rounded-lg text-[13px] font-medium border transition ${
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition ${
                         deviceName === preset
                           ? 'bg-amber-500 text-slate-950 border-amber-400 font-semibold'
                           : 'bg-slate-950 text-slate-300 border-slate-800 hover:bg-slate-800'
@@ -2025,8 +2203,8 @@ export default function App() {
                   type="text"
                   value={deviceName}
                   onChange={(e) => setDeviceName(e.target.value)}
-                  placeholder="Ã–rn: Telefon"
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-[13px] text-slate-100 focus:outline-none focus:border-amber-500"
+                  placeholder="Örn: Telefon"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-100 focus:outline-none focus:border-amber-500"
                 />
               </div>
 
@@ -2036,36 +2214,34 @@ export default function App() {
                   <button
                     type="button"
                     onClick={handleExportJsonBackup}
-                    className="px-3 py-1.5 rounded-lg text-[13px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30 transition"
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30 transition"
                   >
-                    Yedek Ä°ndir (.json)
+                    Yedek İndir (.json)
                   </button>
-                  <label className="px-3 py-1.5 rounded-lg text-[13px] font-semibold bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700 cursor-pointer transition">
-                    <span>Yedek YÃ¼kle (.json)</span>
+                  <label className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700 cursor-pointer transition">
+                    <span>Yedek Yükle (.json)</span>
                     <input type="file" accept=".json" onChange={handleImportJsonBackup} className="hidden" />
                   </label>
                 </div>
                 <button
                   type="button"
                   onClick={handleResetDemo}
-                  className="px-2.5 py-1.5 rounded-lg text-[13px] text-rose-400 hover:bg-rose-950/50 transition"
+                  className="px-2.5 py-1.5 rounded-lg text-xs text-rose-400 hover:bg-rose-950/50 transition"
                 >
-                  VarsayÄ±lana SÄ±fÄ±rla
+                  Varsayılana Sıfırla
                 </button>
               </div>
             </div>
 
-            <div className="px-5 py-3.5 bg-slate-950 border-t border-slate-800 flex items-center justify-end">
+            <div className="px-5 py-3.5 bg-slate-950 border-t border-slate-800 flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => {
+                  handleSaveCloudConfig(quickConnectInput, deviceName);
                   setIsSyncModalOpen(false);
-                  if (resolvedFirebase.mode !== 'none') {
-                    pushToCloud(rooms, logs);
-                  }
-                  showToast('Ayarlar kaydedildi, otomatik eÅŸitleme aktif');
+                  showToast('Bağlantı ayarları kaydedildi');
                 }}
-                className="px-4 py-2 rounded-xl text-[13px] font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 transition"
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 transition"
               >
                 Tamam
               </button>
@@ -2079,18 +2255,18 @@ export default function App() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full overflow-hidden shadow-2xl">
             <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
-              <h2 className="text-base font-bold text-white">Toplu Vana &amp; KollektÃ¶r Ä°ÅŸlemleri</h2>
+              <h2 className="text-base font-bold text-white">Toplu Vana &amp; Kollektör İşlemleri</h2>
               <button
                 type="button"
                 onClick={() => setIsBulkOpen(false)}
-                className="px-2.5 py-1 rounded-lg text-[13px] text-slate-400 hover:text-white hover:bg-slate-800"
+                className="px-2.5 py-1 rounded-lg text-xs text-slate-400 hover:text-white hover:bg-slate-800"
               >
-                Kapat âœ•
+                Kapat ✕
               </button>
             </div>
             <div className="p-5 space-y-3">
-              <p className="text-[13px] text-slate-400">
-                HazÄ±r senaryolarla tÃ¼m odalarÄ± (101â€“120) veya sadece boÅŸ odalarÄ± tek tÄ±kla ayarlayabilirsiniz:
+              <p className="text-xs text-slate-400">
+                Hazır senaryolarla tüm odaları (101–120) veya sadece boş odaları tek tıkla ayarlayabilirsiniz:
               </p>
               <button
                 type="button"
@@ -2098,10 +2274,10 @@ export default function App() {
                 className="w-full text-left p-3 rounded-xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 flex items-center justify-between transition"
               >
                 <div>
-                  <div className="text-[13px] font-semibold text-orange-400">TÃ¼m OdalarÄ± Tam IsÄ±tmaya Al (101-120)</div>
-                  <div className="text-[12px] text-slate-400">2 Ana Vana AÃ§Ä±k + 5/5 KollektÃ¶r AÃ§Ä±k (%100)</div>
+                  <div className="text-xs font-semibold text-orange-400">Tüm Odaları Tam Isıtmaya Al (101-120)</div>
+                  <div className="text-[11px] text-slate-400">2 Ana Vana Açık + 5/5 Kollektör Açık (%100)</div>
                 </div>
-                <span className="text-[13px] font-bold text-orange-400">Uygula â†’</span>
+                <span className="text-xs font-bold text-orange-400">Uygula →</span>
               </button>
 
               <button
@@ -2110,10 +2286,10 @@ export default function App() {
                 className="w-full text-left p-3 rounded-xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 flex items-center justify-between transition"
               >
                 <div>
-                  <div className="text-[13px] font-semibold text-amber-400">BoÅŸ Odalarda 2 KollektÃ¶rÃ¼ Kapat (Tasarruf)</div>
-                  <div className="text-[12px] text-slate-400">BoÅŸ odalarda Ana Vanalar AÃ§Ä±k, 3/5 KollektÃ¶r AÃ§Ä±k (%60)</div>
+                  <div className="text-xs font-semibold text-amber-400">Boş Odalarda 2 Kollektörü Kapat (Tasarruf)</div>
+                  <div className="text-[11px] text-slate-400">Boş odalarda Ana Vanalar Açık, 3/5 Kollektör Açık (%60)</div>
                 </div>
-                <span className="text-[13px] font-bold text-amber-400">Uygula â†’</span>
+                <span className="text-xs font-bold text-amber-400">Uygula →</span>
               </button>
 
               <button
@@ -2122,10 +2298,10 @@ export default function App() {
                 className="w-full text-left p-3 rounded-xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 flex items-center justify-between transition"
               >
                 <div>
-                  <div className="text-[13px] font-semibold text-rose-400">BoÅŸ OdalarÄ±n Ana VanalarÄ±nÄ± Kapat</div>
-                  <div className="text-[12px] text-slate-400">BoÅŸ odalarda 2 Ana Vana KapatÄ±lÄ±r (%0 IsÄ±)</div>
+                  <div className="text-xs font-semibold text-rose-400">Boş Odaların Ana Vanalarını Kapat</div>
+                  <div className="text-[11px] text-slate-400">Boş odalarda 2 Ana Vana Kapatılır (%0 Isı)</div>
                 </div>
-                <span className="text-[13px] font-bold text-rose-400">Uygula â†’</span>
+                <span className="text-xs font-bold text-rose-400">Uygula →</span>
               </button>
 
               <button
@@ -2134,10 +2310,10 @@ export default function App() {
                 className="w-full text-left p-3 rounded-xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 flex items-center justify-between transition"
               >
                 <div>
-                  <div className="text-[13px] font-semibold text-slate-300">TÃ¼m Otelin Ana VanalarÄ±nÄ± Kapat</div>
-                  <div className="text-[12px] text-slate-400">101-120 tÃ¼m ana vanalarÄ± kapatÄ±r</div>
+                  <div className="text-xs font-semibold text-slate-300">Tüm Otelin Ana Vanalarını Kapat</div>
+                  <div className="text-[11px] text-slate-400">101-120 tüm ana vanaları kapatır</div>
                 </div>
-                <span className="text-[13px] font-bold text-slate-400">Uygula â†’</span>
+                <span className="text-xs font-bold text-slate-400">Uygula →</span>
               </button>
             </div>
           </div>
@@ -2150,32 +2326,32 @@ export default function App() {
           <div className="bg-slate-900 border-l border-slate-800 w-full max-w-md h-full flex flex-col shadow-2xl">
             <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
               <div>
-                <h2 className="text-base font-bold text-white">Genel Hareket KayÄ±tlarÄ±</h2>
-                <p className="text-[13px] text-slate-400">Tarih, saat ve cihaz bilgisiyle tÃ¼m iÅŸlemler</p>
+                <h2 className="text-base font-bold text-white">Genel Hareket Kayıtları</h2>
+                <p className="text-xs text-slate-400">Tarih, saat ve cihaz bilgisiyle tüm işlemler</p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsLogOpen(false)}
-                className="px-2.5 py-1 rounded-lg text-[13px] text-slate-400 hover:text-white hover:bg-slate-800"
+                className="px-2.5 py-1 rounded-lg text-xs text-slate-400 hover:text-white hover:bg-slate-800"
               >
-                Kapat âœ•
+                Kapat ✕
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
               {logs.length === 0 ? (
-                <p className="text-[13px] text-slate-500 text-center py-8">HenÃ¼z kayÄ±tlÄ± iÅŸlem bulunmuyor.</p>
+                <p className="text-xs text-slate-500 text-center py-8">Henüz kayıtlı işlem bulunmuyor.</p>
               ) : (
                 logs.map((item) => (
                   <div
                     key={item.id}
-                    className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-[13px] space-y-1"
+                    className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs space-y-1"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="inline-block px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 font-bold text-[12px]">
+                      <span className="inline-block px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 font-bold text-[10px]">
                         Oda {item.room}
                       </span>
-                      <span className="text-[12px] text-slate-400">
-                        {item.dateLabel} â€¢ <strong className="text-slate-200">{item.time}</strong> ({item.device})
+                      <span className="text-[10px] text-slate-400">
+                        {item.dateLabel} • <strong className="text-slate-200">{item.time}</strong> ({item.device})
                       </span>
                     </div>
                     <div className="text-slate-200">{item.msg}</div>
@@ -2187,14 +2363,17 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => {
+                  const nowTs = Date.now();
+                  logsRef.current = [];
                   setLogs([]);
-                  showToast('Genel hareket kayÄ±tlarÄ± temizlendi');
+                  persistLocalAndBroadcast(roomsRef.current, [], nowTs);
+                  showToast('Genel hareket kayıtları temizlendi');
                 }}
-                className="text-[13px] text-rose-400 hover:text-rose-300 font-medium"
+                className="text-xs text-rose-400 hover:text-rose-300 font-medium"
               >
-                KayÄ±tlarÄ± Temizle
+                Kayıtları Temizle
               </button>
-              <span className="text-[12px] text-slate-500">Oda iÃ§i gÃ¼nlÃ¼k kayÄ±tlar korunur</span>
+              <span className="text-[11px] text-slate-500">Oda içi günlük kayıtlar korunur</span>
             </div>
           </div>
         </div>
@@ -2202,7 +2381,7 @@ export default function App() {
 
       {/* Toast */}
       {toastText && (
-        <div className="fixed bottom-4 right-4 z-50 bg-slate-800 border border-amber-500/40 text-slate-100 px-3.5 py-2 rounded-xl shadow-lg text-[13px] font-medium flex items-center gap-2">
+        <div className="fixed bottom-4 right-4 z-50 bg-slate-800 border border-amber-500/40 text-slate-100 px-3.5 py-2 rounded-xl shadow-lg text-xs font-medium flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
           <span>{toastText}</span>
         </div>
